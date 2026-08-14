@@ -49,7 +49,35 @@
   const statusEl = document.getElementById('status');
   const detailEl = document.getElementById('detail');
   const COLORS = { ok: '#22c55e', warn: '#eab308', err: '#ef4444', idle: '#94a3b8' };
+  let installStart = 0;
+  let installTimer = null;
+  function renderInstall(s) {
+    // 首次自动安装 dsh：显示阶段 + 依赖包计数 + 已用秒数
+    if (s.state === 'starting' && s.install) {
+      if (!installStart) installStart = Date.now();
+      statusEl.textContent = s.install.phase === 'finishing'
+        ? '下载完成，正在启动 dsh…'
+        : '正在自动安装 dsh（首次需联网）…';
+      dot.style.background = COLORS.warn;
+      const secs = Math.round((Date.now() - installStart) / 1000);
+      const errBit = s.install.phase === 'error' ? '（下载出错，详见日志）' : '';
+      detailEl.textContent = (s.install.detail || '') + (errBit || `  ·  已等待 ${secs}s`);
+      clearInterval(installTimer);
+      installTimer = setInterval(() => {
+        if (!document.hidden) {
+          const s2 = Math.round((Date.now() - installStart) / 1000);
+          detailEl.textContent = (s.install && s.install.detail || '') + `  ·  已等待 ${s2}s`;
+        }
+      }, 1000);
+      return true;
+    }
+    clearInterval(installTimer);
+    installTimer = null;
+    installStart = 0;
+    return false;
+  }
   function render(s) {
+    if (renderInstall(s)) return;
     const map = {
       starting: ['正在启动后端…', 'warn'],
       restarting: ['正在重启后端…', 'warn'],

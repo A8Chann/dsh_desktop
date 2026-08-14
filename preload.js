@@ -96,7 +96,14 @@ if (isBackendPage) {
           break;
         case 'starting':
           dot.className = 'dshd-dot dshd-warn';
-          label.textContent = '正在启动后端…';
+          if (s.install) {
+            label.textContent = s.install.phase === 'finishing'
+              ? '下载完成，正在启动 dsh…'
+              : `正在自动安装 dsh…（已获取 ${s.install.fetched || 0} 个包）`;
+            pill.title = s.install.detail || '首次启动自动下载 dsh，需联网';
+          } else {
+            label.textContent = '正在启动后端…';
+          }
           break;
         case 'restarting':
           dot.className = 'dshd-dot dshd-warn';
