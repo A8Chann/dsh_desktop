@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>DSH Desktop</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #0b1220; color: #e2e8f0; font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    user-select: none;
+  }
+  .card {
+    text-align: center; max-width: 520px; padding: 44px 40px;
+    border: 1px solid #1e293b; border-radius: 16px; background: #0f172a; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  .logo { width: 56px; height: 56px; margin: 0 auto 14px; display: block; }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #94a3b8; margin-right: 8px; vertical-align: -1px; }
+  #status { font-size: 20px; font-weight: 600; margin: 10px 0 6px; }
+  #detail { color: #94a3b8; font-size: 13px; min-height: 20px; margin-bottom: 26px; word-break: break-all; }
+  button {
+    background: #2563eb; color: #fff; border: none; border-radius: 8px;
+    padding: 9px 20px; margin: 4px 6px; cursor: pointer; font-size: 14px;
+  }
+  button.secondary { background: #1e293b; color: #cbd5e1; }
+  button:hover { filter: brightness(1.15); }
+  .hint { margin-top: 22px; color: #475569; font-size: 12px; line-height: 1.7; }
+  code { background: #1e293b; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="dot" id="dot"></div>
+  <div id="status">正在启动后端…</div>
+  <div id="detail"></div>
+  <div>
+    <button id="retry">重启后端</button>
+    <button class="secondary" id="browser">在浏览器打开</button>
+    <button class="secondary" id="logs">打开日志目录</button>
+  </div>
+  <div class="hint">
+    后端未就绪。日志位于 <code>%APPDATA%\dsh-desktop\logs\main.log</code><br/>
+    设置位于 <code>%APPDATA%\dsh-desktop\settings.json</code>
+  </div>
+</div>
+<script>
+  const api = window.dshDesktop;
+  const dot = document.getElementById('dot');
+  const statusEl = document.getElementById('status');
+  const detailEl = document.getElementById('detail');
+  const COLORS = { ok: '#22c55e', warn: '#eab308', err: '#ef4444', idle: '#94a3b8' };
+  function render(s) {
+    const map = {
+      starting: ['正在启动后端…', 'warn'],
+      restarting: ['正在重启后端…', 'warn'],
+      running: ['后端运行中', 'ok'],
+      external: ['后端运行中（外部实例接管）', 'ok'],
+      'restart-pending': ['插件已变更，即将自动重启', 'warn'],
+      error: ['后端异常，自动重试中', 'err'],
+      stopped: ['后端已停止', 'idle']
+    };
+    const [text, tone] = map[s.state] || [s.state, 'idle'];
+    statusEl.textContent = text;
+    dot.style.background = COLORS[tone];
+    const bits = [];
+    if (s.url) bits.push(s.url);
+    if (s.pid) bits.push('pid ' + s.pid);
+    if (s.error) bits.push(s.error);
+    if (s.nextRetrySec) bits.push(s.nextRetrySec + 's 后重试');
+    detailEl.textContent = bits.join('  ·  ');
+  }
+  if (api && api.onStatus) {
+    api.onStatus(render);
+    api.onCountdown((c) => { statusEl.textContent = '插件已变更，' + c.seconds + 's 后重启'; dot.style.background = COLORS.warn; });
+    api.getStatus();
+  }
+  document.getElementById('retry').onclick = () => api && api.restart();
+  document.getElementById('browser').onclick = () => api && api.openBrowser();
+  document.getElementById('logs').onclick = () => api && api.openLogs();
+</script>
+</body>
+</html>
