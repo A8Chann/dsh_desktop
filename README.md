@@ -17,6 +17,8 @@ npm start          # 开发模式启动
 
 或直接使用打包产物：`dist/DSH-Desktop-0.1.0-portable.exe`（免安装，双击即用）。
 
+> 只需本机装有 **Node.js**。首次启动若未找到 dsh，应用会通过 `npx -y @deepseek-ai/dsh` **自动下载安装**（需联网，稍等片刻），之后复用本地缓存，无需再次下载。
+
 重新打包：
 
 ```bash
@@ -113,7 +115,7 @@ npm run dist   # 打包 Windows portable 单文件 exe
 
 关键点：
 
-- dsh 入口自动探测顺序：`settings.dshBin` → npx 缓存（`%LOCALAPPDATA%\npm-cache\_npx\*\node_modules\@deepseek-ai\dsh\lib\bin.js`，取最新）→ PATH 上的 `dsh`。
+- dsh 入口自动探测顺序：`settings.dshBin` → npx 缓存（`%LOCALAPPDATA%\npm-cache\_npx\*\node_modules\@deepseek-ai\dsh\lib\bin.js`，取最新）→ PATH 上的 `dsh`；都找不到时自动回退 `npx -y @deepseek-ai/dsh web --port N`（自动下载安装，首次需联网）。
 - 就绪信号 = dsh stdout 打印的 `dsh web: http://127.0.0.1:<port>`（`--port 0` 时也是从这行拿到真实端口）。
 - 外部实例识别：向端口发 `GET /`，响应含 `__DSH_BOOT__` 即判定为 dsh web。
 - 日志：`%APPDATA%\DSH Desktop\logs\main.log`（超 5MB 自动轮转）。
@@ -122,7 +124,8 @@ npm run dist   # 打包 Windows portable 单文件 exe
 
 | 现象 | 处理 |
 |---|---|
-| 提示「未找到 dsh 安装」 | 先在任何终端跑一次 `npx -y @deepseek-ai/dsh web`，或在 settings.json 指定 `dshBin` |
+| 首次启动提示正在自动下载 dsh | 正常：`npx -y @deepseek-ai/dsh` 自动安装（需联网，之后复用缓存） |
+| 自动下载失败（无网络） | 联网后重试，或先在任何终端跑一次 `npx -y @deepseek-ai/dsh web`，或在 settings.json 指定 `dshBin` |
 | 端口被占且不是 dsh | 应用自动用随机端口；也可在 settings.json 改 `port` |
 | 自动重启没发生 | 确认 `autoRestartAfterPluginChange` 为 true；看日志是否「pnpm 仍在运行」卡住 |
 | 想恢复 cmd 方式 | 关掉应用后 `npx dsh web` 照常可用，互不影响 |
