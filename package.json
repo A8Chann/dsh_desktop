@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DeepSeek Harness 桌面端：Electron 封装 dsh web，自动拉起后端、内嵌 GUI、插件变更自动重启",
   "main": "main.js",
   "author": "HWX",
