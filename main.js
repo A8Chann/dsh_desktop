@@ -513,7 +513,7 @@ async function handleInstallCommand(cmd) {
   if (!dsh) {
     writeInstallResult(id, {
       id, profile, spec, state: 'failed',
-      error: '未找到 dsh 安装：先运行一次 `npx -y @deepseek-ai/dsh web`，或在 settings.json 中指定 dshBin'
+      error: '未找到 dsh 安装：请重启后端让应用自动通过 npm 安装（选最快源），或在 settings.json 中指定 dshBin'
     });
     return;
   }
@@ -599,7 +599,8 @@ app.whenReady().then(() => {
   backend = new Backend({
     settings,
     logger,
-    events: { onStatus, onPluginChange }
+    events: { onStatus, onPluginChange },
+    userDataDir: userDataDir()
   });
 
   createWindow();

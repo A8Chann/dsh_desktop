@@ -2,7 +2,7 @@
 
 DeepSeek Harness 的 Windows 桌面端。把 `dsh web` 从「cmd 敲命令 + 浏览器开标签页」变成双击即用的桌面应用：
 
-- **自动拉起后端**：应用启动时自动找到 dsh（npx 缓存 / PATH / 手动指定）并以子进程拉起 `dsh web`，解析就绪 URL 后直接内嵌加载 GUI——没有 cmd 窗口，不用手动开浏览器。
+- **自动拉起后端**：应用启动时自动找到 dsh（手动指定 / PATH / npx 缓存兜底），找不到时**先测速多个 npm 镜像源、挑最快的一个，再用 npm 自动安装**（不再用 npx），随后以子进程拉起 `dsh web`，解析就绪 URL 后直接内嵌加载 GUI——没有 cmd 窗口，不用手动开浏览器。
 - **旧实例智能接管**：如果 3080 端口已经有一个 dsh web 在跑（比如之前 cmd 启动的），应用会**直接接管复用**它，你的会话无缝延续；该实例消失后自动接管拉起自己的后端。
 - **插件变更自动重启**：监控 profile 目录的 `package.json` / `pnpm-lock.yaml`。插件安装/移除完成后，窗口顶部出现「插件已变更 · N 秒后自动重启」倒计时（可取消），倒计时结束自动重启后端——**装完插件不用再回 cmd 敲重启**。
 - **崩溃自愈**：后端意外退出时按退避策略（1s→30s）自动重启，悬浮条实时显示状态。
@@ -17,13 +17,14 @@ npm start          # 开发模式启动
 
 或直接使用打包产物：`dist/DSH-Desktop-0.1.0-portable.exe`（免安装，双击即用）。
 
-> 只需本机装有 **Node.js**。首次启动若未找到 dsh，应用会通过 `npx -y @deepseek-ai/dsh` **自动下载安装**（需联网，稍等片刻），之后复用本地缓存，无需再次下载。
+> 只需本机装有 **Node.js**。首次启动若未找到 dsh，应用会**同时测速多个 npm 镜像源、挑最快的一个**，再用 `npm install -g @deepseek-ai/dsh`（而非 npx）**自动安装**（需联网，稍等片刻），并把装好的入口写回设置，下次直接复用。
 
 重新打包：
 
 ```bash
-npm run icon   # （可选）重新生成图标 assets/icon.png
-npm run dist   # 打包 Windows portable 单文件 exe
+npm run icon      # （可选）用 make-icon.js 重新生成 assets/icon.png
+npm run icon:ico  # （可选）从 assets/icon.png 生成全尺寸 assets/icon.ico（打包 exe 图标用）
+npm run dist      # 打包 Windows portable 单文件 exe
 ```
 
 ## 使用
@@ -115,7 +116,7 @@ npm run dist   # 打包 Windows portable 单文件 exe
 
 关键点：
 
-- dsh 入口自动探测顺序：`settings.dshBin` → npx 缓存（`%LOCALAPPDATA%\npm-cache\_npx\*\node_modules\@deepseek-ai\dsh\lib\bin.js`，取最新）→ PATH 上的 `dsh`；都找不到时自动回退 `npx -y @deepseek-ai/dsh web --port N`（自动下载安装，首次需联网）。
+- dsh 入口自动探测顺序：`settings.dshBin` → PATH 上的 `dsh`（npm 全局安装）→ npx 缓存（旧安装兜底）；都找不到时**先测速选最快的 npm 源**，再用 `npm install -g @deepseek-ai/dsh` 自动安装并写回 `settings.dshBin`（不再用 npx，首次需联网）。
 - 就绪信号 = dsh stdout 打印的 `dsh web: http://127.0.0.1:<port>`（`--port 0` 时也是从这行拿到真实端口）。
 - 外部实例识别：向端口发 `GET /`，响应含 `__DSH_BOOT__` 即判定为 dsh web。
 - 日志：`%APPDATA%\DSH Desktop\logs\main.log`（超 5MB 自动轮转）。
@@ -124,11 +125,12 @@ npm run dist   # 打包 Windows portable 单文件 exe
 
 | 现象 | 处理 |
 |---|---|
-| 首次启动提示正在自动下载 dsh | 正常：`npx -y @deepseek-ai/dsh` 自动安装（需联网，之后复用缓存） |
-| 自动下载失败（无网络） | 联网后重试，或先在任何终端跑一次 `npx -y @deepseek-ai/dsh web`，或在 settings.json 指定 `dshBin` |
+| 首次启动提示正在自动下载 dsh | 正常：先测速选最快 npm 源再用 `npm install -g @deepseek-ai/dsh` 自动安装（需联网，装完写回 dshBin 直接复用） |
+| 自动下载失败（无网络） | 联网后重试，或先在任意终端跑一次 `npm install -g @deepseek-ai/dsh`，或在 settings.json 指定 `dshBin` |
 | 端口被占且不是 dsh | 应用自动用随机端口；也可在 settings.json 改 `port` |
 | 自动重启没发生 | 确认 `autoRestartAfterPluginChange` 为 true；看日志是否「pnpm 仍在运行」卡住 |
-| 想恢复 cmd 方式 | 关掉应用后 `npx dsh web` 照常可用，互不影响 |
+| 想恢复 cmd 方式 | 关掉应用后 `npm install -g @deepseek-ai/dsh && dsh web` 照常可用，互不影响 |
+| 任务栏图标显示 Electron/空白 | 开发模式（npm start）显示 electron.exe 默认图标属正常；打包版请确认 `build.win.icon` 指向 `assets/icon.ico`（16~256 全尺寸）；portable 单文件每次解压到临时目录，任务栏图标偶发空白属已知现象，图标稳定可改用 `npm run dist:dir`（目录版固定路径） |
 | 悬浮条碍事 | 按住拖动到别处，或点「–」折叠成小圆点 |
 
 ## 目录结构
@@ -138,12 +140,14 @@ main.js                  Electron 主进程（窗口/菜单/托盘/IPC/倒计时
 preload.js               悬浮控制条注入 + 状态页桥接
 lib/
   backend.js             dsh 后端进程管理器（核心：拉起/接管/监控/重启）
+  dsh-install.js         默认安装 dsh（测速选最快 npm 源 + npm 安装，不再用 npx）
   dsh-resolve.js         node.exe 与 dsh 入口自动探测
   settings.js            设置读写
   logger.js              文件日志
   status-page.html       后端未就绪时的本地状态页
   mock-backend.js        Mock dsh 后端（自动化自测用，DSH_DESKTOP_MOCK=1）
-scripts/make-icon.js     图标生成（纯 Node PNG 编码）
+scripts/make-icon.js     图标生成（纯 Node PNG 编码，256x256）
+scripts/make-ico.js      从 assets/icon.png 生成全尺寸（16~256）assets/icon.ico，打包 exe 用
 assets/icon.png          应用图标
 ```
 
