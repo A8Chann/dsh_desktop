@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-dsh-title-bar-height="36">
+<head>
+<meta charset="UTF-8" />
+<title>DSH Desktop</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { background: #0b1220; overflow: hidden; }
+  :root { --tb-h: 36px; }
+
+  #chrome {
+    position: fixed; top: 0; left: 0; right: 0; height: var(--tb-h); z-index: 2147483000;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 6px 0 10px;
+    user-select: none; box-sizing: border-box;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    background: color-mix(in srgb, #0b1220 74%, transparent);
+    backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5);
+    border-bottom: 1px solid color-mix(in srgb, rgba(255,255,255,.09) 55%, transparent);
+  }
+  #chrome .dch-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  #chrome .dch-icon { width: 20px; height: 20px; border-radius: 6px; display: block; flex: none; background: #f6f8fc; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+  #chrome .dch-title { font-size: 12.5px; font-weight: 600; letter-spacing: .2px; line-height: 16px; color: #e6ecff; white-space: nowrap; }
+  #chrome .dch-badge { font-size: 10px; line-height: 14px; padding: 1px 6px; border-radius: 999px; color: #93a5d8; border: 1px solid rgba(255,255,255,.09); white-space: nowrap; font-family: Consolas, monospace; }
+  #chrome .dch-status { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; line-height: 14px; padding: 1px 8px; border-radius: 999px; color: #93a5d8; border: 1px solid rgba(255,255,255,.09); white-space: nowrap; font-family: Consolas, monospace; }
+  #chrome .dshd-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: #94a3b8; }
+  #chrome .dshd-dot.ok { background: #22c55e; box-shadow: 0 0 5px rgba(34,197,94,.8); }
+  #chrome .dshd-dot.warn { background: #eab308; box-shadow: 0 0 5px rgba(234,179,8,.8); }
+  #chrome .dshd-dot.err { background: #ef4444; box-shadow: 0 0 5px rgba(239,68,68,.8); }
+  #chrome .dch-right { display: flex; align-items: center; gap: 2px; }
+  #chrome .dch-btn { width: 30px; height: 28px; display: grid; place-items: center; border: none; border-radius: 8px; background: transparent; color: #b8c5ea; cursor: pointer; padding: 0; outline: none; transition: background .12s, color .12s; }
+  #chrome .dch-btn:hover { background: rgba(255,255,255,.09); color: #eef2ff; }
+  #chrome .dch-btn:active { background: rgba(255,255,255,.14); }
+  #chrome .dch-close:hover { background: #e81123; color: #fff; }
+  #chrome .dch-menu {
+    position: fixed; top: 44px; right: 8px; width: 272px; z-index: 2147483001;
+    box-sizing: border-box; padding: 6px;
+    background: color-mix(in srgb, #0b1220 92%, white);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
+    backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    color: #e6ecff; font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  #chrome .dch-mh { padding: 8px 10px 10px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 6px; }
+  #chrome .dch-mh-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  #chrome .dch-mh-sub { font-size: 11px; color: #8b9ac4; margin-top: 3px; line-height: 16px; }
+  #chrome .dch-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 5px 10px; border: none; border-radius: 8px; background: transparent; color: #dbe4f8; font: inherit; font-size: 12.5px; line-height: 18px; text-align: left; cursor: pointer; }
+  #chrome .dch-item:hover { background: rgba(255,255,255,.08); }
+  #chrome .dch-item .dch-kbd { margin-left: auto; font-size: 10.5px; color: #5f6f9c; font-family: Consolas, monospace; }
+  #chrome .dch-item[data-danger="1"] { color: #ff7a85; }
+  #chrome .dch-sep { height: 1px; background: rgba(255,255,255,.08); margin: 5px 6px; }
+
+  #app { position: fixed; top: var(--tb-h); left: 0; right: 0; bottom: 0; width: 100%; border: none; background: #0b1220; }
+  #loading { position: fixed; top: var(--tb-h); left: 0; right: 0; bottom: 0; display: grid; place-items: center; color: #64748b; font: 14px "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; background: #0b1220; z-index: 5; }
+</style>
+</head>
+<body>
+  <div id="chrome">
+    <div class="dch-left">
+      <img class="dch-icon" alt="" draggable="false" />
+      <span class="dch-title">DSH Desktop</span>
+      <span class="dch-badge">v1.3.1</span>
+      <span class="dch-status">
+        <span class="dshd-dot warn" id="dot"></span><span id="status-label">连接中…</span>
+      </span>
+    </div>
+    <div class="dch-right">
+      <button class="dch-btn" data-act="menu" title="菜单" aria-label="菜单">⋯</button>
+      <button class="dch-btn" data-act="min" title="最小化" aria-label="最小化">─</button>
+      <button class="dch-btn" data-act="max" title="最大化" aria-label="最大化">▢</button>
+      <button class="dch-btn dch-close" data-act="close" title="关闭" aria-label="关闭">✕</button>
+    </div>
+    <div class="dch-menu" id="menu" hidden></div>
+  </div>
+
+  <div id="loading">正在启动 dsh 后端…</div>
+  <iframe id="app" title="DeepSeek Harness"></iframe>
+
+  <script>
+    // ── 工具 ──
+    var HTTP = 'http://127.0.0.1:19431';
+    function logWeb(msg) {
+      try { new Image().src = HTTP + '/log?msg=' + encodeURIComponent(msg); } catch (e) {}
+    }
+    window.onerror = function (m, src, line) {
+      logWeb('JSERROR ' + m + ' @' + src + ':' + line);
+    };
+    function httpAction(name) {
+      new Image().src = HTTP + '/action?name=' + encodeURIComponent(name);
+    }
+    logWeb('shell loaded, url=' + location.href);
+
+    var dot = document.getElementById('dot');
+    var label = document.getElementById('status-label');
+    var loading = document.getElementById('loading');
+    var frame = document.getElementById('app');
+    var menuEl = document.getElementById('menu');
+    var menuOpen = false;
+    var currentUrl = '';
+
+    function setStatus(s) {
+      var cls = 'warn', text = '后端未就绪';
+      switch (s.state) {
+        case 'running': case 'external':
+          cls = 'ok'; text = '运行中 · 端口 ' + (s.port || '?') + (s.state === 'external' ? '（外部实例）' : '');
+          break;
+        case 'starting': cls = 'warn'; text = s.install ? '自动安装中…' : '启动中…'; break;
+        case 'restarting': cls = 'warn'; text = '重启中…'; break;
+        case 'error': cls = 'err'; text = s.next_retry_sec ? '异常 · ' + s.next_retry_sec + 's 后重试' : '异常'; break;
+        case 'stopped': cls = 'warn'; text = '已停止'; break;
+      }
+      dot.className = 'dshd-dot ' + cls;
+      label.textContent = text;
+      var m = document.getElementById('menu-status');
+      if (m) m.textContent = text;
+      if (s.url && s.url !== currentUrl) {
+        currentUrl = s.url;
+        logWeb('iframe -> ' + s.url);
+        frame.src = s.url;
+        loading.style.display = 'none';
+      }
+    }
+
+    function renderMenu() {
+      menuEl.innerHTML = [
+        '<div class="dch-mh"><div class="dch-mh-title">DSH Desktop <span style="font-weight:400;color:#8b9ac4">封装 v1.3.1</span></div>',
+        '<div class="dch-mh-sub"><span>后端状态：<span id="menu-status">连接中…</span></span></div></div>',
+        '<button class="dch-item" data-act="restart"><span>重启 Web 服务</span><span class="dch-kbd">重启后端</span></button>',
+        '<button class="dch-item" data-act="reload"><span>重新加载</span><span class="dch-kbd">刷新页面</span></button>',
+        '<div class="dch-sep"></div>',
+        '<button class="dch-item" data-act="browser">在浏览器中打开</button>',
+        '<div class="dch-sep"></div>',
+        '<button class="dch-item" data-act="about">关于 DSH Desktop</button>',
+        '<button class="dch-item" data-danger="1" data-act="quit">退出</button>'
+      ].join('');
+      menuEl.querySelectorAll('.dch-item').forEach(function (it) {
+        it.addEventListener('click', function () {
+          closeMenu();
+          var a = it.getAttribute('data-act');
+          if (a === 'about') { alert('DSH Desktop v1.3.1（Tauri 版）'); return; }
+          if (a === 'quit') a = 'close';
+          if (a === 'reload') { frame.src = frame.src; return; }
+          doAction(a);
+        });
+      });
+    }
+    function closeMenu() { menuOpen = false; menuEl.hidden = true; }
+    function openMenu() { renderMenu(); menuOpen = true; menuEl.hidden = false; }
+
+    // 动作：invoke 与 HTTP 双通道（invoke 失败自动回退 HTTP img）
+    function doAction(a) {
+      logWeb('action ' + a);
+      try {
+        if (window.__TAURI__ && window.__TAURI__.core) {
+          window.__TAURI__.core.invoke('dsh_action', { action: a })
+            .then(function () {})
+            .catch(function (e) { logWeb('invoke fail ' + a + ': ' + e); httpAction(a); });
+          return;
+        }
+      } catch (e) { logWeb('invoke err ' + a + ': ' + e); }
+      httpAction(a);
+    }
+
+    document.querySelector('[data-act="min"]').addEventListener('click', function () { doAction('min'); });
+    document.querySelector('[data-act="max"]').addEventListener('click', function () { doAction('max'); });
+    document.querySelector('.dch-close').addEventListener('click', function () { doAction('close'); });
+    document.querySelector('[data-act="menu"]').addEventListener('click', function (e) { e.stopPropagation(); if (menuOpen) closeMenu(); else openMenu(); });
+    document.addEventListener('click', function (e) { if (menuOpen && !document.getElementById('chrome').contains(e.target)) closeMenu(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+
+    // 拖拽：标题栏空白处 mousedown → 走 HTTP drag（Rust start_dragging）
+    document.getElementById('chrome').addEventListener('mousedown', function (e) {
+      if (e.target.closest('button') || e.target.closest('.dch-menu')) return;
+      if (e.button !== 0) return;
+      doAction('drag');
+    });
+
+    // 状态：事件 + 初始拉取（invoke 失败回退 HTTP /status）
+    try {
+      if (window.__TAURI__ && window.__TAURI__.event) {
+        window.__TAURI__.event.listen('backend-status', function (e) { if (e.payload) setStatus(e.payload); });
+      }
+    } catch (e) { logWeb('listen err ' + e); }
+    function fetchStatus() {
+      fetch(HTTP + '/status')
+        .then(function (r) { return r.json(); })
+        .then(setStatus)
+        .catch(function (e) { logWeb('status fetch fail ' + e); });
+    }
+    try {
+      if (window.__TAURI__ && window.__TAURI__.core) {
+        window.__TAURI__.core.invoke('get_backend_status')
+          .then(setStatus)
+          .catch(function () { fetchStatus(); });
+      } else { fetchStatus(); }
+    } catch (e) { fetchStatus(); }
+
+    // 图标：优先同源静态资源，失败时走 HTTP /icon
+    var iconEl = document.querySelector('.dch-icon');
+    iconEl.onerror = function () {
+      fetch(HTTP + '/icon')
+        .then(function (r) { return r.blob(); })
+        .then(function (b) { iconEl.src = URL.createObjectURL(b); })
+        .catch(function () {});
+    };
+    iconEl.src = './icon.png';
+
+    // 启动自检 ping
+    doAction('ping');
+  </script>
+</body>
+</html>

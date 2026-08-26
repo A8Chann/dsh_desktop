@@ -9,4 +9,5 @@ logs/
 issue28/
 .tmp-*.png
 .dsh/
+src-tauri/target/
 

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>DSH Desktop</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center;
+    background: #0b1220; color: #cbd5e1;
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .card { text-align: center; }
+  .logo { width: 72px; height: 72px; margin: 0 auto 16px; }
+  .hint { font-size: 13px; color: #64748b; }
+  #status { font-size: 15px; color: #93c5fd; margin: 8px 0; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="./icon.png" alt="" />
+    <div id="status">正在启动 dsh 后端…</div>
+    <div class="hint">首次启动可能需要自动安装 dsh（联网），请稍候</div>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    async function main() {
+      try {
+        const { event } = window.__TAURI__;
+        await event.listen('backend-status', (e) => {
+          const s = e.payload;
+          if (s.state === 'running') statusEl.textContent = `后端就绪 · 端口 ${s.port ?? ''}，正在切换到 GUI…`;
+          else if (s.install) statusEl.textContent = `正在自动安装 dsh…（已获取 ${s.install.fetched || 0} 个包）`;
+          else if (s.state === 'error') statusEl.textContent = `后端异常：${s.error || ''}${s.nextRetrySec ? `（${s.nextRetrySec}s 后重试）` : ''}`;
+          else statusEl.textContent = '正在启动 dsh 后端…';
+        });
+      } catch (e) {
+        statusEl.textContent = '加载状态监听失败: ' + e;
+      }
+    }
+    main();
+  </script>
+</body>
+</html>

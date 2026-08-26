@@ -1,8 +1,8 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "1.3.0",
-  "description": "DeepSeek Harness 桌面端：Electron 封装 dsh web，自动拉起后端、内嵌 GUI、插件变更自动重启",
+  "version": "1.4.0",
+  "description": "DeepSeek Harness 桌面端：Electron 封装 dsh web，自动拉起后端、内嵌 GUI、插件变更提示手动重启",
   "main": "main.js",
   "author": "A8Chann@github",
   "license": "MIT",

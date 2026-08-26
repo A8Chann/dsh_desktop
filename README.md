@@ -4,7 +4,7 @@ DeepSeek Harness 的 Windows 桌面端。把 `dsh web` 从「cmd 敲命令 + 浏
 
 - **自动拉起后端**：应用启动时自动找到 dsh（手动指定 / PATH / npx 缓存兜底），找不到时**先测速多个 npm 镜像源、挑最快的一个，再用 npm 自动安装**（不再用 npx），随后以子进程拉起 `dsh web`，解析就绪 URL 后直接内嵌加载 GUI——没有 cmd 窗口，不用手动开浏览器。
 - **旧实例智能接管**：如果 3080 端口已经有一个 dsh web 在跑（比如之前 cmd 启动的），应用会**直接接管复用**它，你的会话无缝延续；该实例消失后自动接管拉起自己的后端。
-- **插件变更自动重启**：监控 profile 目录的 `package.json` / `pnpm-lock.yaml`。插件安装/移除完成后，窗口顶部出现「插件已变更 · N 秒后自动重启」倒计时（可取消），倒计时结束自动重启后端——**装完插件不用再回 cmd 敲重启**。
+- **插件变更提示手动重启**：监控 profile 目录的 `package.json` / `pnpm-lock.yaml`。插件安装/移除完成后，应用**不再自动重启**，只弹出系统通知提示你手动重启（悬浮条「重启」或 `Ctrl+Shift+R`）来加载新插件。
 - **崩溃自愈**：后端意外退出时按退避策略（1s→30s）自动重启，悬浮条实时显示状态。
 - **端口冲突自愈**：端口被非 dsh 服务占用时自动回退 `--port 0`（系统随机端口）。
 
@@ -15,7 +15,7 @@ npm install        # 安装依赖（electron 等）
 npm start          # 开发模式启动
 ```
 
-或直接使用打包产物：`dist/DSH-Desktop-0.1.0-portable.exe`（免安装，双击即用）。
+或直接使用打包产物：`dist/DSH-Desktop-1.3.0-portable.exe`（免安装，双击即用）。
 
 > 只需本机装有 **Node.js**。首次启动若未找到 dsh，应用会**同时测速多个 npm 镜像源、挑最快的一个**，再用 `npm install -g @deepseek-ai/dsh`（而非 npx）**自动安装**（需联网，稍等片刻），并把装好的入口写回设置，下次直接复用。
 
@@ -31,7 +31,8 @@ npm run dist      # 打包 Windows portable 单文件 exe
 
 | 操作 | 方式 |
 |---|---|
-| 重启后端 | 悬浮条「重启」按钮 / 托盘菜单 / 菜单「应用 → 重启后端」/ `Ctrl+Shift+R` |
+| 重启后端 | 悬浮条「重启」按钮 / 托盘菜单 / 菜单「应用 → 重启后端」/ `Ctrl+Shift+R`（重启后前端自动刷新） |
+| 刷新前端页面 | 悬浮条「⟳」按钮 / 菜单「视图 → 重新加载页面」 |
 | 在系统浏览器打开 | 悬浮条「↗」/ 托盘 / 菜单 / `Ctrl+Shift+O` |
 | 查看日志 | 托盘或菜单「打开日志目录」 |
 | 开发者工具 / 缩放 | 菜单「视图」 |
@@ -39,26 +40,26 @@ npm run dist      # 打包 Windows portable 单文件 exe
 **悬浮条**（窗口顶部居中的小胶囊）显示后端状态并可拖动：
 
 - 🟢 绿点 = 运行中（显示端口；外部实例会标注「外部实例」）
-- 🟡 黄点 = 启动中 / 重启中 / 插件变更倒计时
+- 🟡 黄点 = 启动中 / 重启中
 - 🔴 红点 = 后端异常（显示下次重试秒数）
 
 **托盘图标**常驻系统托盘：显示主窗口、重启后端、在浏览器打开、打开日志目录、退出。
 
-## 插件变更自动重启的完整流程
+## 插件变更后的处理（提示手动重启）
 
 1. 在 GUI 里让 agent 执行 `dsh plugin --profile web add <包名>`（或任何会改 profile 依赖的操作）；
 2. 应用检测到 `~/.dsh/profiles/web/package.json` 或 `pnpm-lock.yaml` 变化；
-3. 等待文件稳定（默认 6s）并确认 pnpm 安装进程已结束；
-4. 弹出倒计时「插件已变更 · 6s 后自动重启」（悬浮条有「取消」按钮）；
-5. 倒计时结束 → 杀旧后端 → 拉起新后端 → 窗口自动加载新会话列表。
+3. 等待文件稳定并确认 pnpm 安装进程已结束；
+4. 弹出系统通知「插件已变更 · 请手动重启后端」——**不会自动重启**；
+5. 你手动点击悬浮条「重启」/ `Ctrl+Shift+R` 后，后端重启完成，前端页面**自动刷新**并加载新插件。
 
-> 不想自动重启？在设置里把 `autoRestartAfterPluginChange` 改为 `false`，变更后只提示、由你手动重启。
+> 说明：`autoRestartAfterPluginChange` 字段已保留但不再启用自动重启，改为仅提示。`restartCountdownSec` 字段已不再使用。
 
 ## 插件安装控制通道（agent 协作）
 
 **问题**：agent（dsh web 会话）在会话内直接跑 `dsh plugin add` 时，安装完成后后端会自动重启，把 agent 正在进行的回合掐断——用户看到"话说到一半就没了"。
 
-**方案**：agent 把安装请求**交给 Electron 主进程执行**（主进程不随后端重启），安装完整结束后由现有插件变更流程弹倒计时重启；结果写回控制目录，agent 重启恢复会话后读取并汇报。
+**方案**：agent 把安装请求**交给 Electron 主进程执行**（主进程不随后端重启），安装完整结束后由现有插件变更流程提示用户手动重启；结果写回控制目录，agent 重启恢复会话后读取并汇报。
 
 协议（agent 侧）：
 
@@ -72,11 +73,11 @@ npm run dist      # 打包 Windows portable 单文件 exe
      "timeoutMs": 300000
    }
    ```
-2. 轮询 `result-<id>.json` 直到 `state ∈ {done, failed, timeout}`；或直接结束回合，后端重启、会话恢复后读该文件汇报。
+2. 轮询 `result-<id>.json` 直到 `state ∈ {done, failed, timeout}`；或直接结束回合，手动重启后端、会话恢复后读该文件汇报。
 
 控制目录默认 `%APPDATA%\DSH Desktop\control`（可用环境变量 `DSH_DESKTOP_CONTROL_DIR` 覆盖，测试/多实例隔离用）。
 
-推荐工作流：agent 发起安装后**立刻结束回合**（提示"安装进行中，后端将自动重启"）→ 重启后会话恢复，agent 核对 `result-<id>.json` 与 `node_modules` 后汇报结果。
+推荐工作流：agent 发起安装后**立刻结束回合**（提示"安装进行中，请稍后手动重启后端"）→ 用户手动重启后会话恢复，agent 核对 `result-<id>.json` 与 `node_modules` 后汇报结果。
 
 ## 设置
 
@@ -87,8 +88,8 @@ npm run dist      # 打包 Windows portable 单文件 exe
   "port": 3080,                            // dsh web 监听端口；0 = 随机端口
   "workspace": "C:\\Users\\HWX",           // dsh 后端工作目录（agent 文件操作根目录）；null = 用户主目录
   "closeToTray": false,                    // 关闭窗口时最小化到托盘（true）还是退出（false）
-  "autoRestartAfterPluginChange": true,    // 插件变更后自动重启后端
-  "restartCountdownSec": 6,                // 自动重启前的可取消倒计时（秒）
+  "autoRestartAfterPluginChange": false,   // 保留字段：插件变更后仅提示手动重启（不再自动重启）
+  "restartCountdownSec": 6,                // 保留字段：旧版自动重启倒计时秒数（已不使用）
   "profile": "web",                        // 启动的 dsh profile
   "nodeBin": null,                         // 手动指定 node.exe 路径（null = 自动探测）
   "dshBin": null                           // 手动指定 dsh 入口（bin.js 或 dsh.cmd，null = 自动探测）
@@ -108,7 +109,7 @@ npm run dist      # 打包 Windows portable 单文件 exe
 │   ├─ spawn node <dsh bin.js> web --port N    │
 │   ├─ 解析 stdout "dsh web: http://127.0.0.1" │
 │   ├─ 端口探测 → 接管外部实例 / 回退随机端口   │
-│   ├─ fs.watch profile 依赖文件 → 自动重启     │
+│   ├─ fs.watch profile 依赖文件 → 提示手动重启  │
 │   └─ 意外退出 → 退避重启                     │
 │  托盘 / 菜单 / 系统通知                       │
 └──────────────────────────────────────────────┘
@@ -128,7 +129,8 @@ npm run dist      # 打包 Windows portable 单文件 exe
 | 首次启动提示正在自动下载 dsh | 正常：先测速选最快 npm 源再用 `npm install -g @deepseek-ai/dsh` 自动安装（需联网，装完写回 dshBin 直接复用） |
 | 自动下载失败（无网络） | 联网后重试，或先在任意终端跑一次 `npm install -g @deepseek-ai/dsh`，或在 settings.json 指定 `dshBin` |
 | 端口被占且不是 dsh | 应用自动用随机端口；也可在 settings.json 改 `port` |
-| 自动重启没发生 | 确认 `autoRestartAfterPluginChange` 为 true；看日志是否「pnpm 仍在运行」卡住 |
+| 插件变更后没提示 | 看日志是否「pnpm 仍在运行」卡住（等待安装结束会重新提示）；提示后手动用悬浮条「重启」/ `Ctrl+Shift+R` 重启 |
+| 重启后页面还是旧的 | 已自动刷新（重启完成后强制 reload）；仍异常可用悬浮条「⟳」手动刷新 |
 | 想恢复 cmd 方式 | 关掉应用后 `npm install -g @deepseek-ai/dsh && dsh web` 照常可用，互不影响 |
 | 任务栏图标显示 Electron/空白 | 开发模式（npm start）显示 electron.exe 默认图标属正常；打包版请确认 `build.win.icon` 指向 `assets/icon.ico`（16~256 全尺寸）；portable 单文件每次解压到临时目录，任务栏图标偶发空白属已知现象，图标稳定可改用 `npm run dist:dir`（目录版固定路径） |
 | 悬浮条碍事 | 按住拖动到别处，或点「–」折叠成小圆点 |

@@ -72,6 +72,7 @@ if (isBackendPage) {
       '<span class="dshd-actions">' +
       '<button data-act="restart" title="重启 dsh 后端 (Ctrl+Shift+R)">重启</button>' +
       '<button data-act="cancel" class="dshd-cancel" title="取消自动重启" style="display:none">取消</button>' +
+      '<button data-act="reload" title="刷新前端页面">⟳</button>' +
       '<button data-act="browser" title="在系统浏览器中打开">↗</button>' +
       '<button data-act="collapse" title="折叠">–</button>' +
       '</span>';
@@ -147,6 +148,7 @@ if (isBackendPage) {
       const act = btn.dataset.act;
       if (act === 'restart') ipcRenderer.send('backend:restart');
       else if (act === 'cancel') ipcRenderer.send('backend:cancel-restart');
+      else if (act === 'reload') ipcRenderer.send('app:reload');
       else if (act === 'browser') ipcRenderer.send('app:open-browser');
       else if (act === 'collapse') pill.classList.add('dshd-collapsed');
     });

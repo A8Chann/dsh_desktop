@@ -206,7 +206,8 @@ function encodeIco(entries) {
 }
 
 // ── 主流程 ──
-const SIZES = [16, 24, 32, 48, 64, 128, 256];
+// 大尺寸在前：避免读取器（如 Tauri 图标加载）取到 16px 条目导致模糊
+const SIZES = [256, 128, 64, 48, 32, 24, 16];
 const srcPath = path.join(__dirname, '..', 'assets', 'icon.png');
 const outPath = path.join(__dirname, '..', 'assets', 'icon.ico');
 

@@ -45,15 +45,22 @@ function sendStatus() {
   win.webContents.send('backend-status', lastStatus);
 }
 let lastStatus = null;
+let needReload = false; // 后端重启完成后需要刷新前端页面
 
 function onStatus(status) {
+  const prev = lastStatus;
   lastStatus = status;
+  // 后端从「重启/启动中」变为「就绪」时，前端页面在重启后不会自动刷新（URL 没变），
+  // 标记一次强制刷新，让 GUI 与重启后的后端重新建立连接。
+  if (status && (status.state === 'running' || status.state === 'external') && status.url) {
+    if (prev && (prev.state === 'restarting' || prev.state === 'starting' || prev.state === 'restart-pending')) {
+      needReload = true;
+    }
+    scheduleAutoReport();
+  }
   sendStatus();
   syncWindow();
   updateTrayTooltip();
-  if (status && status.state === 'running' && status.url) {
-    scheduleAutoReport();
-  }
 }
 
 // ─────────────────────────── 重启后自动汇报 ───────────────────────────
@@ -148,30 +155,10 @@ function notify(title, body) {
   } catch {}
 }
 
-/** 插件变更 → 可取消倒计时 → 自动重启。 */
+/** 插件变更 → 仅提示，不再自动重启（用户手动重启后端以加载新插件）。 */
 function onPluginChange() {
-  if (!settings.autoRestartAfterPluginChange) {
-    notify('插件已变更', '后端需要重启才能加载新插件（悬浮条「重启」或 Ctrl+Shift+R）');
-    return;
-  }
-  if (restartPending) return;
-  restartPending = true;
-  const total = settings.restartCountdownSec || 6;
-  let left = total;
-  notify('插件已变更', `${total} 秒后自动重启后端…`);
-  log(`插件变更：${total}s 后自动重启`);
-  sendCountdown(left);
-  countdownTimer = setInterval(() => {
-    left -= 1;
-    if (left <= 0) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-      restartPending = false;
-      backend.restart('plugin-change');
-      return;
-    }
-    sendCountdown(left);
-  }, 1000);
+  log('插件已变更：请手动重启后端以加载新插件');
+  notify('插件已变更', '请手动重启后端（悬浮条「重启」或 Ctrl+Shift+R）以加载新插件');
 }
 
 function sendCountdown(seconds) {
@@ -199,7 +186,12 @@ function syncWindow() {
 
   if (s.url && (s.state === 'running' || s.state === 'external')) {
     if (!current.startsWith(s.url)) {
+      needReload = false;
       win.loadURL(s.url);
+    } else if (needReload) {
+      needReload = false;
+      log('后端已重启，刷新前端页面');
+      win.webContents.reloadIgnoringCache();
     }
     return;
   }
@@ -615,6 +607,12 @@ app.whenReady().then(() => {
   ipcMain.on('app:get-status', () => sendStatus());
   ipcMain.on('app:open-browser', () => openInBrowser());
   ipcMain.on('app:open-logs', () => openLogsDir());
+  ipcMain.on('app:reload', () => {
+    if (win && !win.isDestroyed()) {
+      log('手动刷新前端页面');
+      win.webContents.reloadIgnoringCache();
+    }
+  });
   ipcMain.on('app:quit', () => app.quit());
 
   // 下载（会话导出等）默认保存到系统下载目录
