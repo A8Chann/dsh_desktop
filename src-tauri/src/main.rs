@@ -8,18 +8,25 @@ mod util;
 
 use backend::Backend;
 use controls::AppState;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
-    controls::register_scheme(
+    let app = controls::register_scheme(
         tauri::Builder::default()
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_opener::init()),
     )
     .invoke_handler(tauri::generate_handler![controls::dsh_action, controls::get_backend_status])
+    // 拦截窗口关闭：弹「退出 / 缩小到托盘」选择框；已选退出则放行
+    .on_window_event(|window, event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            handle_close_requested(window, api);
+        }
+    })
     .setup(|app| {
         let settings = Arc::new(Mutex::new(settings::load_settings()));
         let log = Arc::new(util::Logger::new(settings::logs_dir().join("main.log")));
@@ -31,6 +38,7 @@ fn main() {
             settings,
             backend: backend.clone(),
             log: log.clone(),
+            force_exit: AtomicBool::new(false),
         });
         app.manage(state.clone());
 
@@ -56,8 +64,30 @@ fn main() {
 
         Ok(())
     })
-    .run(tauri::generate_context!())
-    .expect("error while running DSH Desktop");
+    .build(tauri::generate_context!())
+    .expect("error while building DSH Desktop");
+
+    // 退出前清理：结束自有 dsh 后端进程树，避免遗留后台进程
+    app.run(|app_handle, event| {
+        if let RunEvent::Exit = event {
+            let state = app_handle.state::<AppState>();
+            state.log.info("==== DSH Desktop 退出：终止自有后端进程 ====");
+            state.backend.kill_owned();
+        }
+    });
+}
+
+/// 窗口关闭请求（Alt+F4 / 任务栏关闭 / 系统关闭）：已明确退出则放行；
+/// 否则拦截并弹出「退出 / 缩小到托盘」选择框（自绘 ✕ 等程序化关闭路径
+/// 不经过这里，已在注入脚本/控制服务中直接弹窗）。
+fn handle_close_requested(window: &tauri::Window, api: &tauri::CloseRequestApi) {
+    let app = window.app_handle();
+    let state = app.state::<AppState>();
+    if state.force_exit.load(Ordering::SeqCst) {
+        return; // 已选择退出 → 放行
+    }
+    api.prevent_close();
+    controls::show_close_dialog(&app.clone());
 }
 
 fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
@@ -114,7 +144,13 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 let _ = tauri_plugin_opener::OpenerExt::opener(app)
                     .open_path(dir.to_string_lossy().to_string(), None::<&str>);
             }
-            "quit" => app.exit(0),
+            "quit" => {
+                // 先同步杀自有后端进程树再退出（Exit 事件回调不可靠，见 run_action quit 注释）
+                let st = app.state::<AppState>();
+                st.force_exit.store(true, Ordering::SeqCst);
+                st.backend.kill_owned();
+                app.exit(0);
+            }
             _ => {}
         })
         // 双击（或左键单击）托盘图标：显示主窗口

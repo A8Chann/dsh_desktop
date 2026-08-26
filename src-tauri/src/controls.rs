@@ -8,6 +8,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -19,6 +20,8 @@ pub struct AppState {
     pub settings: Arc<Mutex<Settings>>,
     pub backend: Arc<Backend>,
     pub log: Arc<Logger>,
+    /// 用户已明确选择退出（托盘/菜单/弹窗）→ 放行窗口关闭，不再拦截。
+    pub force_exit: AtomicBool,
 }
 
 // ?????????????????????????????????????????????????????? ???????????????????????Deepseek-Harness-EAC????????????????????????????????????????????????????????
@@ -80,6 +83,63 @@ pub const INJECT_JS: &str = r##"
   ].join('');
 
   var menuEl = null, maxBtn = null, menuOpen = false;
+  // ── 关闭选择框（Rust 拦截窗口关闭后调用 __dshdShowCloseDialog 弹出）──
+  // 注意：弹窗挂在 document.body 下（不是标题栏 #BAR_ID 的后代），
+  // 所以 CSS 必须用弹窗自己的 id 选择器，不能用 '#BAR_ID .xxx'（会失配导致裸文本）。
+  var CLOSE_DLG_ID = '__dshd_close_overlay__';
+  var closeDlgBuilt = false, closeDlgEl = null, closeDlgOpen = false;
+  var CLOSE_DLG_CSS = [
+    '#' + CLOSE_DLG_ID + '[hidden]{display:none!important}',
+    '#' + CLOSE_DLG_ID + '{position:fixed;inset:0;z-index:2147483002;display:grid;place-items:center;',
+    'background:rgba(3,7,16,.55);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);-webkit-app-region:no-drag}',
+    '#' + CLOSE_DLG_ID + ' .dch-close-box{width:390px;box-sizing:border-box;padding:18px 18px 14px;border-radius:16px;',
+    'background:var(--dsw-alias-bg-layer-2,color-mix(in srgb,var(--dsw-alias-bg-base,#0b1220) 94%,white));',
+    'border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.12));',
+    'box-shadow:0 18px 60px rgba(0,0,0,.55),0 2px 10px rgba(0,0,0,.4);',
+    'font-family:var(--dsw-font-family,"Segoe UI","Microsoft YaHei",system-ui,sans-serif);color:var(--dsw-alias-label-primary,#e6ecff)}',
+    '#' + CLOSE_DLG_ID + ' .dch-close-box h3{margin:0 0 6px;font-size:14px;font-weight:600;letter-spacing:.2px}',
+    '#' + CLOSE_DLG_ID + ' .dch-close-box p{margin:0 0 16px;font-size:12px;line-height:19px;color:var(--dsw-alias-label-tertiary,#93a5d8)}',
+    '#' + CLOSE_DLG_ID + ' .dch-close-actions{display:flex;gap:8px;justify-content:flex-end}',
+    '#' + CLOSE_DLG_ID + ' .dch-close-actions button{flex:1;min-width:88px;padding:7px 10px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.12));',
+    'background:transparent;color:var(--dsw-alias-label-primary,#dbe4f8);font:inherit;font-size:12.5px;cursor:pointer;transition:background .12s}',
+    '#' + CLOSE_DLG_ID + ' .dch-close-actions button:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.1))}',
+    '#' + CLOSE_DLG_ID + ' .dch-close-actions .dch-quit{background:rgba(232,17,35,.14);border-color:rgba(232,17,35,.45);color:#ff7a85}',
+    '#' + CLOSE_DLG_ID + ' .dch-close-actions .dch-quit:hover{background:rgba(232,17,35,.24)}'
+  ].join('');
+  function ensureCloseDlg() {
+    if (closeDlgBuilt) return;
+    closeDlgBuilt = true;
+    var style = document.createElement('style');
+    style.textContent = CLOSE_DLG_CSS;
+    document.head.appendChild(style);
+    var box = document.createElement('div');
+    box.id = CLOSE_DLG_ID;
+    box.className = 'dch-overlay';
+    box.hidden = true;
+    box.innerHTML =
+      '<div class="dch-close-box">' +
+      '<h3>关闭 DSH Desktop</h3>' +
+      '<p>选择关闭方式：缩小到托盘后应用仍在后台运行（后端不中断），可随时从托盘图标重新打开。</p>' +
+      '<div class="dch-close-actions">' +
+      '<button data-c="cancel">取消</button>' +
+      '<button data-c="tray">缩小到托盘</button>' +
+      '<button data-c="quit" class="dch-quit">退出</button>' +
+      '</div></div>';
+    box.querySelector('[data-c="cancel"]').addEventListener('click', hideCloseDlg);
+    box.querySelector('[data-c="tray"]').addEventListener('click', function () { hideCloseDlg(); act('min-tray'); });
+    box.querySelector('[data-c="quit"]').addEventListener('click', function () { hideCloseDlg(); act('quit'); });
+    box.addEventListener('click', function (e) { if (e.target === box) hideCloseDlg(); });
+    document.body.appendChild(box);
+    closeDlgEl = box;
+  }
+  function hideCloseDlg() { closeDlgOpen = false; if (closeDlgEl) closeDlgEl.hidden = true; }
+  // Rust 在拦截到关闭请求时调用；幂等：已弹出则不重复叠加
+  window.__dshdShowCloseDialog = function () {
+    if (closeDlgOpen) return;
+    closeDlgOpen = true;
+    ensureCloseDlg();
+    closeDlgEl.hidden = false;
+  };
   var HTTP = 'http://127.0.0.1:19431';
   // 外部页面按钮：标准 HTTP img 请求到本地控制服务（WebView2 必达 Rust）
   function act(a) { new Image().src = HTTP + '/action?name=' + encodeURIComponent(a); }
@@ -93,7 +153,7 @@ pub const INJECT_JS: &str = r##"
   function renderMenu() {
     if (!menuEl) return;
     menuEl.innerHTML = [
-      '<div class="dch-mh"><div class="dch-mh-title">DSH Desktop <span style="font-weight:400;color:var(--dsw-alias-label-tertiary)">封装 v1.3.1</span></div>',
+      '<div class="dch-mh"><div class="dch-mh-title">DSH Desktop <span style="font-weight:400;color:var(--dsw-alias-label-tertiary)">封装 v1.5.0</span></div>',
       '<div class="dch-mh-sub"><span>后端状态：<span id="dshd-menu-status">连接中…</span></span></div></div>',
       '<button class="dch-item" data-act="restart"><span>重启 Web 服务</span><span class="dch-kbd">重启后端</span></button>',
       '<button class="dch-item" data-act="reload"><span>重新加载</span><span class="dch-kbd">刷新页面</span></button>',
@@ -107,7 +167,7 @@ pub const INJECT_JS: &str = r##"
       item.addEventListener('click', function () {
         var actName = item.getAttribute('data-act');
         closeMenu();
-        if (actName === 'quit') { act('close'); return; }
+        // 菜单“退出”= 明确退出（不弹窗）；标题栏 ✕ 走 act('close') → Rust 弹关闭选择框
         act(actName);
       });
     });
@@ -142,7 +202,7 @@ pub const INJECT_JS: &str = r##"
       '<div class="dch-left">' +
       '<img class="dch-icon" alt="" draggable="false" src="__DSHD_ICON_URI__" />' +
       '<span class="dch-title">DSH Desktop</span>' +
-      '<span class="dch-badge">v1.3.1</span>' +
+      '<span class="dch-badge">v1.5.0</span>' +
       '<span class="dch-status"><span class="dshd-dot warn" id="dshd-dot"></span><span id="dshd-status-label">连接中…</span></span>' +
       '</div>' +
       '<div class="dch-right">' +
@@ -159,7 +219,12 @@ pub const INJECT_JS: &str = r##"
 
     bar.querySelector('[data-act="min"]').addEventListener('click', function () { act('min'); });
     bar.querySelector('[data-act="max"]').addEventListener('click', function () { act('max'); });
-    bar.querySelector('.dch-close').addEventListener('click', function () { act('close'); });
+    bar.querySelector('.dch-close').addEventListener('click', function () {
+      // ✕ 直接弹「退出 / 缩小到托盘」选择框；
+      // 不能走 act('close')→win.close()：程序化 close 不触发 CloseRequested，
+      // Rust 的拦截弹窗会被绕过（窗口直接关闭、应用退出、后端成孤儿）。
+      window.__dshdShowCloseDialog();
+    });
     bar.querySelector('[data-act="menu"]').addEventListener('click', function (e) { e.stopPropagation(); if (menuOpen) closeMenu(); else openMenu(); });
     // Tauri 不支持 -webkit-app-region：整栏拖动走 dshd://drag（Rust start_dragging）
     bar.addEventListener('mousedown', function (e) {
@@ -168,7 +233,9 @@ pub const INJECT_JS: &str = r##"
       act('drag');
     });
     document.addEventListener('click', function (e) { if (menuOpen && !bar.contains(e.target)) closeMenu(); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { hideCloseDlg(); closeMenu(); }
+    });
     // 启动自检：探测 remote IPC 通道是否可用（Rust 侧会打日志）
     act('ping');
   }
@@ -288,13 +355,9 @@ pub fn handle_dshd(
             });
             json(r#"{"ok":true}"#.to_string())
         }
+        // 程序化关闭一律转为弹出「退出 / 缩小到托盘」选择框（与系统关闭一致）
         "/close" => {
-            let app2 = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                if let Some(win) = app2.get_webview_window("main") {
-                    let _ = win.close();
-                }
-            });
+            show_close_dialog(&app);
             json(r#"{"ok":true}"#.to_string())
         }
         "/drag" => {
@@ -356,6 +419,33 @@ pub fn get_backend_status(state: tauri::State<'_, Arc<AppState>>) -> serde_json:
 
 // ?????????????????????????????????????????????????????? ??? HTTP ?????? ??????????????????????????????????????????????????????
 // ?????shell ????????status?????JSON????action?name=?????????????// /icon????????PNG????log?msg=??????????????? main.log????// ?????CORS ?????shell ??fetch/img ????????HTTP???????????
+
+/// 弹出「退出 / 缩小到托盘」选择框（页面内自绘，JS 幂等）。
+/// 页面不可用（未加载/加载失败）时回退为隐藏到托盘，绝不误退出。
+pub fn show_close_dialog(app: &AppHandle) {
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        for _ in 0..8 {
+            if let Some(w) = app2.get_webview_window("main") {
+                if w.eval("window.__dshdShowCloseDialog && window.__dshdShowCloseDialog();")
+                    .is_ok()
+                {
+                    return;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        let st = app2.state::<AppState>();
+        st.log.warn("[close] 页面不可用，关闭动作回退为隐藏到托盘");
+        let app3 = app2.clone();
+        let _ = app2.run_on_main_thread(move || {
+            if let Some(w) = app3.get_webview_window("main") {
+                let _ = w.hide();
+            }
+        });
+    });
+}
+
 pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -> bool {
     match action {
         "min" => {
@@ -381,12 +471,8 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
             true
         }
         "close" => {
-            let app2 = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                if let Some(w) = app2.get_webview_window("main") {
-                    let _ = w.close();
-                }
-            });
+            // 程序化关闭一律弹「退出 / 缩小到托盘」选择框（win.close() 会绕过 CloseRequested 拦截）
+            show_close_dialog(app);
             true
         }
         "drag" => {
@@ -399,28 +485,35 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
             true
         }
         "restart" => {
+            // 重启与“就绪后自动刷新”已统一在 Backend::restart 内完成
             state.backend.restart("titlebar");
-            // ?????????????????????????????????????? reload
-            let app2 = app.clone();
-            let st2 = state.clone();
-            std::thread::spawn(move || {
-                for _ in 0..50 {
-                    std::thread::sleep(std::time::Duration::from_millis(300));
-                    let s = st2.backend.current_status();
-                    if (s.state == "running" || s.state == "external") && s.url.is_some() {
-                        if let Some(w) = app2.get_webview_window("main") {
-                            let _ = w.eval("location.reload()");
-                        }
-                        return;
-                    }
-                }
-            });
             true
         }
         "reload" => {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.eval("location.reload()");
             }
+            true
+        }
+        // 关闭弹窗 → 缩小到托盘
+        "min-tray" => {
+            let app2 = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(w) = app2.get_webview_window("main") {
+                    let _ = w.hide();
+                }
+            });
+            true
+        }
+        // 关闭弹窗 / 菜单 / 托盘 → 真正退出。
+        // 注意：不能只依赖 RunEvent::Exit 回调做清理——AppHandle::exit 的 request_exit
+        // 在部分线程/时机下会失败并直接 std::process::exit，Exit 事件可能根本不触发。
+        // 所以这里先同步 kill_owned 杀自有后端进程树，再请求退出（Exit 回调仅作兜底）。
+        "quit" => {
+            state.log.info("[titlebar] 用户选择退出");
+            state.force_exit.store(true, Ordering::SeqCst);
+            state.backend.kill_owned();
+            app.exit(0);
             true
         }
         "browser" => {

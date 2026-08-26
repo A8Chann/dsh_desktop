@@ -1,5 +1,6 @@
 //! dsh 后端管理器：拉起 `dsh web --no-open`、解析就绪 URL、端口探测/接管、
 //! 崩溃退避自愈、插件变更只提示（不自动重启）。所有状态经 `backend-status` 事件推送。
+use crate::controls::AppState;
 use crate::settings::{save_settings, Settings};
 use crate::util::{find_pid_by_port, parse_url_line, probe_port, Logger};
 use serde::Serialize;
@@ -77,7 +78,7 @@ pub struct Backend {
 }
 
 const RETRY_DELAYS_SEC: [u64; 6] = [1, 2, 4, 8, 15, 30];
-const EXTERNAL_HEALTH_MS: u64 = 5000;
+const EXTERNAL_HEALTH_MS: u64 = 1000;
 const EXTERNAL_FAIL_LIMIT: u32 = 3;
 
 impl Backend {
@@ -145,28 +146,52 @@ impl Backend {
         *self.thread.lock().unwrap() = Some(handle);
     }
 
-    /// 重启后端：停止当前循环并在新线程重新拉起。
+    /// 重启后端：先终止自有进程树（解除管理线程在 stdout 读取上的阻塞），
+    /// 等旧循环退出后重新拉起；后端就绪后自动刷新页面（统一各入口行为）。
     pub fn restart(&self, reason: &str) {
         self.log_info(&format!("==== 重启后端: {} ====", reason));
         self.set_state("restarting");
-        self.stop.store(true, Ordering::SeqCst);
-        // 等旧线程退出
+        // stop=true + 杀掉自有后端进程树。管理线程正阻塞在 read_line 等子进程输出，
+        // 必须先把子进程杀掉才能让它退出（否则 join 会永久卡死，重启即失效）。
+        self.kill_owned();
         let handle = self.thread.lock().unwrap().take();
         if let Some(h) = handle {
             let _ = h.join();
         }
         self.start();
+
+        // 统一：后端重新就绪后自动刷新页面（标题栏菜单/托盘/控制通道同一行为）
+        let app = self.app.clone();
+        std::thread::spawn(move || {
+            for _ in 0..80 {
+                std::thread::sleep(Duration::from_millis(500));
+                let st = app.state::<AppState>().backend.current_status();
+                if (st.state == "running" || st.state == "external") && st.url.is_some() {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.eval("location.reload()");
+                    }
+                    return;
+                }
+            }
+        });
     }
 
-    #[allow(dead_code)]
-    pub fn shutdown(&self) {
-        self.log_info("==== 停止后端 ====");
+    /// 立即终止自有后端进程树（应用退出前、重启前调用）；外部实例不杀。
+    pub fn kill_owned(&self) {
         self.stop.store(true, Ordering::SeqCst);
-        let handle = self.thread.lock().unwrap().take();
-        if let Some(h) = handle {
-            let _ = h.join();
+        let s = self.status.lock().unwrap().clone();
+        let mut pid = if s.owned { s.pid } else { None };
+        // 兜底：running 状态必然是自拉起的后端（外部接管状态是 external），
+        // 若状态里没记到 pid，按端口反查进程再杀，避免退出后遗留 node。
+        if pid.is_none() && s.state == "running" {
+            if let Some(p) = s.port {
+                pid = crate::util::find_pid_by_port(p);
+            }
         }
-        self.set_state("stopped");
+        if let Some(pid) = pid {
+            self.log_info(&format!("==== 终止自有后端进程树 pid={} ====", pid));
+            crate::util::kill_tree(pid);
+        }
     }
 
     pub fn log_info(&self, msg: &str) {
@@ -455,7 +480,13 @@ fn fail(app: AppHandle, status: Arc<Mutex<BackendStatus>>, stop: &Arc<AtomicBool
             ..BackendStatus::new("error")
         };
         publish(&app, &status, st);
-        std::thread::sleep(Duration::from_secs(secs));
+        // 退避 sleep 按 1 秒切片，保证 stop（重启/退出）能及时打断
+        for _ in 0..secs {
+            if stop.load(Ordering::SeqCst) {
+                return;
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
         if stop.load(Ordering::SeqCst) {
             return;
         }
