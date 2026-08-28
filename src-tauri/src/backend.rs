@@ -165,7 +165,10 @@ impl Backend {
         std::thread::spawn(move || {
             for _ in 0..80 {
                 std::thread::sleep(Duration::from_millis(500));
-                let st = app.state::<AppState>().backend.current_status();
+                let st = match app.try_state::<Arc<AppState>>() {
+                    Some(s) => s.backend.current_status(),
+                    None => continue,
+                };
                 if (st.state == "running" || st.state == "external") && st.url.is_some() {
                     if let Some(w) = app.get_webview_window("main") {
                         let _ = w.eval("location.reload()");
@@ -176,23 +179,51 @@ impl Backend {
         });
     }
 
-    /// 立即终止自有后端进程树（应用退出前、重启前调用）；外部实例不杀。
-    pub fn kill_owned(&self) {
-        self.stop.store(true, Ordering::SeqCst);
-        let s = self.status.lock().unwrap().clone();
-        let mut pid = if s.owned { s.pid } else { None };
-        // 兜底：running 状态必然是自拉起的后端（外部接管状态是 external），
-        // 若状态里没记到 pid，按端口反查进程再杀，避免退出后遗留 node。
-        if pid.is_none() && s.state == "running" {
-            if let Some(p) = s.port {
-                pid = crate::util::find_pid_by_port(p);
-            }
-        }
-        if let Some(pid) = pid {
-            self.log_info(&format!("==== 终止自有后端进程树 pid={} ====", pid));
-            crate::util::kill_tree(pid);
+    /// 立即终止自有后端进程树（应用退出前、重启前调用）；外部接管实例（owned=false）不杀。
+/// 自带健壮性：① pid 缺失时按端口反查（任意状态，不限于 running）；② 杀完探测端口，
+/// 若仍在监听则按端口补杀一次；③ 记录 taskkill 成败，便于日志定位。
+pub fn kill_owned(&self) {
+    self.stop.store(true, Ordering::SeqCst);
+    let s = self.status.lock().unwrap().clone();
+    let port = s.port;
+    // 自有实例才有权杀；外部接管实例保留。
+    let mut pid = if s.owned { s.pid } else { None };
+    if pid.is_none() && s.owned {
+        if let Some(p) = port {
+            pid = crate::util::find_pid_by_port(p);
         }
     }
+    let Some(pid) = pid else {
+        self.log_info("==== 终止自有后端：未找到 pid（可能未运行） ====");
+        return;
+    };
+    self.log_info(&format!("==== 终止自有后端进程树 pid={} ====", pid));
+    if !crate::util::kill_tree(pid) {
+        self.log_info(&format!("==== taskkill pid={} 未成功，按端口补杀 ====", pid));
+        if let Some(p) = port {
+            if let Some(pid2) = crate::util::find_pid_by_port(p) {
+                let ok2 = crate::util::kill_tree(pid2);
+                self.log_info(&format!(
+                    "==== 补杀 pid={} 结果={} ====",
+                    pid2,
+                    if ok2 { "成功" } else { "失败" }
+                ));
+            } else {
+                self.log_info("==== 补杀：端口已无进程 ====");
+            }
+        }
+    } else {
+        // 杀成功但保险起见仍探测端口，残留则补杀
+        if let Some(p) = port {
+            if crate::util::probe_port(p, 500).0 {
+                if let Some(pid2) = crate::util::find_pid_by_port(p) {
+                    self.log_info(&format!("==== 端口仍被占用，补杀 pid={} ====", pid2));
+                    crate::util::kill_tree(pid2);
+                }
+            }
+        }
+    }
+}
 
     pub fn log_info(&self, msg: &str) {
         self.log.info(msg);
@@ -241,6 +272,7 @@ fn spawn_own(
     settings: Arc<Mutex<Settings>>,
     status: Arc<Mutex<BackendStatus>>,
     stop: Arc<AtomicBool>,
+    log: Arc<Logger>,
 ) {
     // 1) 解析 node/dsh
     let (node_bin, dsh_bin) = {
@@ -278,6 +310,7 @@ fn spawn_own(
         let (ok, is_dsh) = probe_port(port, 2500);
         if ok && is_dsh {
             let pid = find_pid_by_port(port).unwrap_or(0);
+            log.info(&format!("[backend] 接管外部实例 pid={} 端口={}（退出时不杀）", pid, port));
             adopt_external(app.clone(), port, pid, status.clone(), stop.clone());
             return;
         }
@@ -309,6 +342,7 @@ fn spawn_own(
     };
 
     let pid = child.id();
+    log.info(&format!("[backend] 拉起自有后端 pid={} 端口={}", pid, port));
     // 状态推送
     {
         let st = BackendStatus {
@@ -512,7 +546,13 @@ fn run_loop(
             return;
         }
         // 插件变更提示阈值：等待安装结束由 fs 监控触发，这里仅保证循环可持续
-        spawn_own(app.clone(), settings.clone(), status.clone(), stop.clone());
+        spawn_own(
+            app.clone(),
+            settings.clone(),
+            status.clone(),
+            stop.clone(),
+            log.clone(),
+        );
         attempts += 1;
         if attempts > 100 {
             break;

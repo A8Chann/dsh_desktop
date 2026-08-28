@@ -154,13 +154,46 @@ pub fn probe_port(port: u16, timeout_ms: u64) -> (bool, bool) {
     (ok, buf.contains("__DSH_BOOT__"))
 }
 
-/// taskkill 杀进程树（Windows）。
-#[allow(dead_code)]
-pub fn kill_tree(pid: u32) {
-    let _ = std::process::Command::new("taskkill.exe")
+/// taskkill 杀进程树（Windows）。返回是否成功（taskkill 退出码 0）。
+pub fn kill_tree(pid: u32) -> bool {
+    std::process::Command::new("taskkill.exe")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output();
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// 复制文本到系统剪贴板。
+/// 用 PowerShell Set-Clipboard + Base64 内嵌文本（避免引号/控制台编码问题，clip.exe 方案不可靠）。
+pub fn copy_to_clipboard(text: &str) -> bool {
+    // base64 编码（无依赖实现）
+    const TBL: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    fn b64(data: &[u8]) -> String {
+        let mut out = String::new();
+        for chunk in data.chunks(3) {
+            let b0 = chunk[0] as u32;
+            let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+            let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+            let n = (b0 << 16) | (b1 << 8) | b2;
+            out.push(TBL[(n >> 18) as usize & 63] as char);
+            out.push(TBL[(n >> 12) as usize & 63] as char);
+            out.push(if chunk.len() > 1 { TBL[(n >> 6) as usize & 63] as char } else { '=' });
+            out.push(if chunk.len() > 2 { TBL[n as usize & 63] as char } else { '=' });
+        }
+        out
+    }
+    let payload = b64(text.as_bytes());
+    let script = format!(
+        "$t=[Convert]::FromBase64String('{}');Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString($t));",
+        payload
+    );
+    std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-Command", &script])
+        .creation_flags(0x08000000)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// 简单 HTTP GET 文本（用于探测，不走 TLS）。

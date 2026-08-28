@@ -26,6 +26,15 @@ pub struct Settings {
     /// 手动指定 dsh 入口（bin.js 绝对路径）
     #[serde(alias = "dsh_bin")]
     pub dsh_bin: Option<String>,
+    /// 下载保存目录；None → 系统下载目录
+    #[serde(alias = "download_dir")]
+    pub download_dir: Option<String>,
+    /// 下载前是否询问每个文件的保存位置
+    #[serde(alias = "ask_download_location")]
+    pub ask_download_location: bool,
+    /// 下载开始时是否自动显示下载面板
+    #[serde(alias = "show_downloads_on_start")]
+    pub show_downloads_on_start: bool,
 }
 
 impl Default for Settings {
@@ -38,6 +47,9 @@ impl Default for Settings {
             profile: "web".to_string(),
             node_bin: None,
             dsh_bin: None,
+            download_dir: None,
+            ask_download_location: false,
+            show_downloads_on_start: true,
         }
     }
 }

@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>DSH Desktop</title>
+<style>
+  :root {
+    --dshd-bg: #0b1220;
+    --dshd-fg: #e6ecff;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body {
+    font: 12.5px/1.4 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--dshd-fg); user-select: none;
+  }
+
+  /* ── 标题栏条 ── */
+  #bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 36px; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 6px 0 10px; box-sizing: border-box;
+    /* 无背景色画布（底色由窗口背景随主题承担）——彻底规避缩放竞态导致背景被裁 */
+    background: transparent;
+    backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    border-bottom: 1px solid color-mix(in srgb, var(--dshd-fg) 8%, transparent);
+  }
+  .left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+  .icon { width: 20px; height: 20px; border-radius: 6px; display: block; flex: none; }
+  .title { font-weight: 600; letter-spacing: .2px; white-space: nowrap; color: var(--dshd-fg); }
+  .badge {
+    font-size: 10.5px; font-weight: 600; line-height: 15px; padding: 1px 7px; border-radius: 999px;
+    color: color-mix(in srgb, var(--dshd-fg) 85%, transparent);
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 5%, transparent);
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    letter-spacing: .3px;
+  }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 500; line-height: 16px;
+    padding: 1px 9px; border-radius: 999px;
+    color: color-mix(in srgb, var(--dshd-fg) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 18%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 6%, transparent);
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; }
+  .dot.ok { background: #22c55e; box-shadow: 0 0 5px rgba(34,197,94,.8); }
+  .dot.warn { background: #eab308; box-shadow: 0 0 5px rgba(234,179,8,.8); }
+  .dot.err { background: #ef4444; box-shadow: 0 0 5px rgba(239,68,68,.8); }
+  .right { display: flex; align-items: center; gap: 2px; flex: none; }
+  .btn {
+    width: 28px; height: 26px; display: grid; place-items: center; border: none; border-radius: 7px;
+    background: transparent; color: color-mix(in srgb, var(--dshd-fg) 70%, transparent);
+    cursor: pointer; padding: 0; outline: none; transition: background .12s, color .12s; font-size: 11px;
+  }
+  .btn svg { display: block; }
+  .btn:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); color: var(--dshd-fg); }
+  .btn:active { background: color-mix(in srgb, var(--dshd-fg) 16%, transparent); }
+  .close:hover { background: #e81123; color: #fff; }
+  /* 下载徽标：绝对定位（不参与 flex 布局，出现/消失不推动任何按钮）*/
+  #dl-btn {
+    position: absolute; left: 0; top: 5px;
+    width: 28px; height: 26px; margin: 0;
+    opacity: 0; pointer-events: none;
+    transition: opacity .22s ease;
+  }
+  #dl-btn.shown { opacity: 1; pointer-events: auto; }
+  #dl-btn svg { display: block; }
+  #dl-btn .ring .bg { fill: none; stroke: color-mix(in srgb, var(--dshd-fg) 18%, transparent); stroke-width: 2.4; }
+  #dl-btn .ring .fg { fill: none; stroke: #22c55e; stroke-width: 2.4; stroke-linecap: round; transition: stroke-dashoffset .3s; }
+  #dl-btn .ic { fill: none; stroke: color-mix(in srgb, var(--dshd-fg) 82%, transparent); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  /* 出现动画：拨片左移让位（位移量由 JS 按实测徽标宽度设置）*/
+  #bar.dl-badge-open .switch { transform: translateX(var(--dl-slide, -24px)); }
+  /* 页面切换开关：左 Harness / 右 Chat；滑柄显示当前页名，另一侧底上显示目标页名 */
+  .switch {
+    box-sizing: border-box;
+    width: 108px; height: 24px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 28%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 9%, transparent);
+    position: relative; cursor: pointer; padding: 0;
+    margin: 0 6px 0 4px; flex: none; overflow: hidden;
+    transition: transform .2s ease, background .15s, border-color .15s;
+    font-size: 10.5px; font-weight: 600;
+    color: color-mix(in srgb, var(--dshd-fg) 62%, transparent);
+    -webkit-user-select: none; user-select: none;
+  }
+  /* 底色文字 = 滑柄落点（同中心）：滑柄归位时严丝合缝 */
+  .switch .sw-bg { position: absolute; inset: 0; }
+  .switch .sw-bg span {
+    position: absolute; top: 0; bottom: 0; display: grid; place-items: center;
+    white-space: nowrap; overflow: hidden; padding: 0 2px;
+  }
+  .switch .sw-bg span.bg-l { left: 1.5px; width: 52px; }
+  .switch .sw-bg span.bg-r { left: 62px; width: 38px; }
+  .switch .sw-knob {
+    position: absolute; top: 2px; left: 1.5px; width: 52px; height: 18px;
+    border-radius: 999px; display: grid; place-items: center;
+    background: var(--dshd-bg);
+    box-shadow: 0 1px 3px rgba(0,0,0,.35);
+    color: var(--dshd-fg);
+    transition: left .18s ease, width .18s ease;
+    pointer-events: none;
+    overflow: hidden; white-space: nowrap;
+    padding: 0 2px;
+  }
+  .switch:hover { filter: brightness(1.12); }
+
+  /* ── 弹层（外壳层内，非独立窗口）── */
+  .popup {
+    position: fixed; z-index: 20; display: none; box-sizing: border-box;
+    background: color-mix(in srgb, var(--dshd-bg) 94%, white);
+    box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
+    border-radius: 12px;
+  }
+  .popup.visible { display: block; }
+
+  /* 菜单 */
+  #popup-menu { top: 44px; right: 8px; width: 280px; padding: 6px; }
+  .popup .mh { padding: 8px 10px 10px; border-bottom: 1px solid color-mix(in srgb, var(--dshd-fg) 12%, transparent); margin-bottom: 6px; }
+  .popup .mh-title { font-size: 13px; font-weight: 600; color: var(--dshd-fg); }
+  .popup .mh-title .dim { font-weight: 400; color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); }
+  .popup .mh-sub { font-size: 11px; color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); margin-top: 3px; }
+  .popup .item {
+    display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 5px 10px;
+    border: none; border-radius: 8px; background: transparent; color: color-mix(in srgb, var(--dshd-fg) 88%, transparent);
+    font: inherit; font-size: 12.5px; line-height: 18px; text-align: left; cursor: pointer;
+  }
+  .popup .item:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); }
+  .popup .item .kbd { margin-left: auto; font-size: 10.5px; color: color-mix(in srgb, var(--dshd-fg) 38%, transparent); font-family: Consolas, monospace; }
+  .popup .item[danger] { color: #ff7a85; }
+  .popup .sep { height: 1px; background: color-mix(in srgb, var(--dshd-fg) 12%, transparent); margin: 5px 6px; }
+
+  /* 退出选择 */
+  #popup-close { top: 50%; left: 50%; width: 380px; transform: translate(-50%, -50%); padding: 18px 18px 14px; }
+  #popup-close h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+  #popup-close p { margin: 0 0 16px; font-size: 12px; line-height: 19px; color: color-mix(in srgb, var(--dshd-fg) 58%, transparent); }
+  .actions { display: flex; gap: 8px; }
+  .actions button {
+    flex: 1; min-width: 88px; padding: 7px 10px; border-radius: 9px;
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 18%, transparent);
+    background: transparent; color: color-mix(in srgb, var(--dshd-fg) 88%, transparent);
+    font: inherit; font-size: 12.5px; cursor: pointer; transition: background .12s;
+  }
+  .actions button:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); }
+  .actions .quit { background: rgba(232,17,35,.14); border-color: rgba(232,17,35,.45); color: #ff7a85; }
+  .actions .quit:hover { background: rgba(232,17,35,.24); }
+
+  /* 下载管理：面板封顶，列表内部滚动 */
+  #popup-downloads { top: 44px; right: 12px; width: 420px; padding: 10px 12px 14px; max-height: 500px; }
+  #popup-downloads.visible { display: flex; flex-direction: column; }
+  #dl-list { overflow-y: auto; min-height: 0; flex: 1 1 auto; margin-right: -8px; padding-right: 6px; }
+  #dl-list::-webkit-scrollbar { width: 6px; }
+  #dl-list::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--dshd-fg) 22%, transparent); border-radius: 3px; }
+  #dl-list::-webkit-scrollbar-track { background: transparent; }
+  /* 删除二次确认（面板内模态层） */
+  #dl-confirm {
+    position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 6;
+    border-radius: 12px; background: rgba(0, 0, 0, .45);
+    display: none; align-items: center; justify-content: center;
+  }
+  #dl-confirm.visible { display: flex; }
+  #dl-confirm .card {
+    width: 300px; padding: 14px; border-radius: 10px;
+    background: color-mix(in srgb, var(--dshd-bg) 96%, white);
+    box-shadow: 0 8px 28px rgba(0,0,0,.5);
+  }
+  #dl-confirm .card h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+  #dl-confirm .card .fname { font-size: 12px; color: color-mix(in srgb, var(--dshd-fg) 60%, transparent); word-break: break-all; margin-bottom: 10px; line-height: 16px; }
+  #dl-confirm .card label { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 12px; cursor: pointer; }
+  #dl-confirm .card input[type="checkbox"] { width: 14px; height: 14px; accent-color: #e81123; }
+  #dl-confirm .card .row { display: flex; gap: 8px; }
+  #dl-confirm .card .row button {
+    flex: 1; padding: 6px 8px; border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 18%, transparent);
+    background: transparent; color: color-mix(in srgb, var(--dshd-fg) 88%, transparent);
+    font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  #dl-confirm .card .row button:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); }
+  #dl-confirm .card .row .dang { background: #e81123; border-color: transparent; color: #fff; }
+  #dl-confirm .card .row .dang:hover { background: #c50f1f; }
+  .dl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .dl-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  .dl-head .dl-gear { border: none; background: transparent; color: color-mix(in srgb, var(--dshd-fg) 60%, transparent); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 6px; }
+  .dl-head .dl-gear:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); }
+  .dl-head button, .dl-row button {
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 8%, transparent);
+    color: color-mix(in srgb, var(--dshd-fg) 88%, transparent); border-radius: 8px;
+    padding: 4px 9px; font: inherit; font-size: 11.5px; cursor: pointer; transition: background .12s;
+  }
+  .dl-head button:hover, .dl-row button:hover { background: color-mix(in srgb, var(--dshd-fg) 14%, transparent); }
+  .dl-row {
+    position: relative; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin-bottom: 8px;
+    border-radius: 10px; background: color-mix(in srgb, var(--dshd-fg) 6%, transparent);
+  }
+  .dl-row:hover { background: color-mix(in srgb, var(--dshd-fg) 9%, transparent); }
+  .dl-row .meta { font-size: 11.5px; color: color-mix(in srgb, var(--dshd-fg) 74%, transparent); word-break: break-all; line-height: 16px; display: flex; align-items: center; gap: 6px; }
+  .dl-row .meta .fic { color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); flex: none; display: inline-flex; }
+  .dl-row .meta .fname { word-break: break-all; }
+  .dl-row .dl-state { font-size: 10.5px; color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); font-family: Consolas, monospace; }
+  .dl-row .dl-actions { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+  /* 打开文件 = 蓝色超链接文本，hover 下划线 */
+  .dl-open {
+    color: #3b82f6; text-decoration: none; cursor: pointer; font-size: 12px; line-height: 18px;
+  }
+  .dl-open:hover { text-decoration: underline; color: #60a5fa; }
+  /* 已删除态：置灰 */
+  .dl-row.deleted .fname { color: color-mix(in srgb, var(--dshd-fg) 42%, transparent); }
+  .dl-del-label { font-size: 12px; color: color-mix(in srgb, var(--dshd-fg) 40%, transparent); }
+  /* 右侧图标：仅行 hover 时显示 */
+  .row-icons { display: none; margin-left: auto; gap: 2px; align-items: center; }
+  .dl-row:hover .row-icons { display: inline-flex; }
+  .row-icons .icb {
+    width: 26px; height: 24px; display: grid; place-items: center; border: none;
+    background: transparent; color: color-mix(in srgb, var(--dshd-fg) 60%, transparent);
+    cursor: pointer; border-radius: 7px; padding: 0;
+  }
+  .row-icons .icb:hover { background: color-mix(in srgb, var(--dshd-fg) 12%, transparent); color: var(--dshd-fg); }
+  .row-icons .icb.del:hover { background: rgba(232,17,35,.16); color: #ff7a85; }
+  .dl-bar { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--dshd-fg) 12%, transparent); overflow: hidden; }
+  .dl-bar > div { height: 100%; background: #22c55e; border-radius: 999px; transition: width .3s; }
+  .dl-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dl-btns button {
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 8%, transparent);
+    color: color-mix(in srgb, var(--dshd-fg) 88%, transparent); border-radius: 8px;
+    padding: 4px 9px; font: inherit; font-size: 11.5px; cursor: pointer; transition: background .12s;
+  }
+  .dl-btns button:hover { background: color-mix(in srgb, var(--dshd-fg) 14%, transparent); }
+  .dl-row.clickable { cursor: pointer; }
+  .dl-row.clickable:active { background: color-mix(in srgb, var(--dshd-fg) 12%, transparent); }
+  /* 按行内按钮/链接时，整行不进入按压选中态（仅元素自身高亮） */
+  .dl-row.clickable:active:has(a:active, button:active) { background: color-mix(in srgb, var(--dshd-fg) 9%, transparent); }
+  #dl-empty { text-align: center; color: color-mix(in srgb, var(--dshd-fg) 45%, transparent); font-size: 12px; padding: 14px 0 6px; }
+
+  /* 下载设置 */
+  #popup-settings { top: 44px; right: 12px; width: 400px; padding: 12px 14px 14px; }
+  #popup-settings h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+  .set-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12.5px; }
+  .set-row label { flex: none; width: 150px; color: color-mix(in srgb, var(--dshd-fg) 70%, transparent); }
+  .set-row input[type="text"] {
+    flex: 1; min-width: 0; padding: 5px 8px; border-radius: 7px;
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 6%, transparent);
+    color: var(--dshd-fg); font: inherit; font-size: 12px; outline: none;
+  }
+  .set-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: #22c55e; }
+  .set-row .set-hint { font-size: 11px; color: color-mix(in srgb, var(--dshd-fg) 45%, transparent); margin-left: auto; }
+  .set-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .set-actions button {
+    flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--dshd-fg) 18%, transparent);
+    background: transparent; color: color-mix(in srgb, var(--dshd-fg) 88%, transparent); font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .set-actions button:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); }
+  .set-actions .primary { background: #16a34a; border-color: transparent; color: #fff; }
+
+  /* 右键菜单（下载管理内） */
+  #dl-ctx {
+    position: fixed; z-index: 30; display: none; min-width: 180px; padding: 5px;
+    background: color-mix(in srgb, var(--dshd-bg) 96%, white);
+    border-radius: 10px;
+    box-shadow: 0 10px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
+  }
+  #dl-ctx.visible { display: block; }
+  #dl-ctx .item {
+    display: flex; align-items: center; width: 100%; min-height: 28px; padding: 4px 10px;
+    border: none; border-radius: 7px; background: transparent;
+    color: color-mix(in srgb, var(--dshd-fg) 86%, transparent);
+    font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+  }
+  #dl-ctx .item:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); }
+  #dl-ctx .item[danger] { color: #ff7a85; }
+  #dl-ctx .sep { height: 1px; background: color-mix(in srgb, var(--dshd-fg) 12%, transparent); margin: 4px 6px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <div class="left">
+    <img class="icon" id="icon" alt="" draggable="false" />
+    <span class="title">DSH Desktop</span>
+    <span class="badge">v2.0</span>
+    <span class="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
+  </div>
+  <div class="right">
+    <button class="switch" id="sw" title="切换到 DeepSeek 聊天页" aria-label="切换页面">
+      <span class="sw-bg"><span class="bg-l">Harness</span><span class="bg-r">Chat</span></span>
+      <span class="sw-knob">Harness</span>
+    </button>
+    <button class="btn" id="dl-btn" title="下载管理" aria-label="下载管理">
+      <svg width="20" height="20" viewBox="0 0 20 20">
+        <g class="ring" transform="rotate(-90 10 10)">
+          <circle class="bg" cx="10" cy="10" r="8.6"></circle>
+          <circle class="fg" cx="10" cy="10" r="8.6" stroke-dasharray="54" stroke-dashoffset="54"></circle>
+        </g>
+        <path class="ic" d="M10 6.2v2.4M8.2 7.6l1.8 1.8 1.8-1.8M7 13.2h6"></path>
+      </svg>
+    </button>
+    <button class="btn" id="menu-btn" title="菜单" aria-label="菜单"><svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="2.4" cy="6" r="1.15"/><circle cx="6" cy="6" r="1.15"/><circle cx="9.6" cy="6" r="1.15"/></svg></button>
+    <button class="btn" id="min-btn" title="最小化" aria-label="最小化"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M2.5 6h7"/></svg></button>
+    <button class="btn" id="max-btn" title="最大化" aria-label="最大化"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1"><rect x="2.6" y="2.6" width="6.8" height="6.8" rx="1.4"/></svg></button>
+    <button class="btn close" id="close-btn" title="关闭" aria-label="关闭"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2.6 2.6l6.8 6.8M9.4 2.6l-6.8 6.8"/></svg></button>
+  </div>
+</div>
+
+<div class="popup" id="popup-menu">
+  <div class="mh">
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.0</span></div>
+    <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
+  </div>
+  <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
+  <button class="item" data-act="reload"><span>重新加载</span><span class="kbd">刷新页面</span></button>
+  <button class="item" data-act="toggle-deepseek"><span>切换 DeepSeek 聊天页</span><span class="kbd">DeepSeek</span></button>
+  <button class="item" data-act="dl"><span>下载管理</span><span class="kbd">导出文件</span></button>
+  <button class="item" data-act="dl-settings"><span>下载设置</span><span class="kbd">保存位置</span></button>
+  <div class="sep"></div>
+  <button class="item" data-act="browser">在浏览器中打开</button>
+  <div class="sep"></div>
+  <button class="item" data-act="about">关于 DSH Desktop</button>
+  <button class="item" data-act="quit" danger>退出</button>
+</div>
+
+<div class="popup" id="popup-close">
+  <h3>关闭 DSH Desktop</h3>
+  <p>选择关闭方式：缩小到托盘后应用仍在后台运行（后端不中断），可随时从托盘图标重新打开。</p>
+  <div class="actions">
+    <button id="c-cancel">取消</button>
+    <button id="c-tray">缩小到托盘</button>
+    <button id="c-quit" class="quit">退出</button>
+  </div>
+</div>
+
+<div class="popup" id="popup-downloads">
+  <div class="dl-head">
+    <h3>下载管理</h3>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="dl-gear" id="dl-gear" title="下载设置">⚙</button>
+      <button id="dl-close">关闭</button>
+    </div>
+  </div>
+  <div id="dl-ask" hidden style="border:1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);border-radius:10px;padding:8px 10px;margin-bottom:8px">
+    <div style="font-size:12.5px;margin-bottom:6px">保存位置：<span id="dl-ask-name" style="color:color-mix(in srgb, var(--dshd-fg) 74%, transparent)"></span></div>
+    <div style="display:flex;gap:6px">
+      <input type="text" id="dl-ask-dir" spellcheck="false" style="flex:1;min-width:0;padding:4px 8px;border-radius:7px;border:1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);background:color-mix(in srgb, var(--dshd-fg) 6%, transparent);color:var(--dshd-fg);font:inherit;font-size:12px;outline:none" />
+      <button id="dl-ask-ok">开始下载</button>
+      <button id="dl-ask-no">取消</button>
+    </div>
+  </div>
+  <div id="dl-list"></div>
+  <div id="dl-empty">暂无下载任务</div>
+  <div id="dl-confirm">
+    <div class="card">
+      <h4>删除下载项</h4>
+      <div class="fname" id="dl-confirm-name"></div>
+      <label><input type="checkbox" id="dl-confirm-file" checked /> 同时删除本地文件</label>
+      <div class="row">
+        <button id="dl-confirm-cancel">取消</button>
+        <button id="dl-confirm-ok" class="dang">删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="popup" id="popup-settings">
+  <h3>下载设置</h3>
+  <div class="set-row">
+    <label>下载保存位置</label>
+    <input type="text" id="set-dir" spellcheck="false" />
+  </div>
+  <div class="set-row">
+    <label>下载前询问每个文件的保存位置</label>
+    <input type="checkbox" id="set-ask" />
+  </div>
+  <div class="set-row">
+    <label>下载开始时显示下载菜单</label>
+    <input type="checkbox" id="set-auto" />
+  </div>
+  <div class="set-actions">
+    <button id="set-cancel">取消</button>
+    <button id="set-save" class="primary">保存</button>
+  </div>
+</div>
+
+<div id="dl-ctx"></div>
+
+<script>
+  var HTTP = 'http://127.0.0.1:19431';
+  function act(a, q) { new Image().src = HTTP + '/action?name=' + encodeURIComponent(a) + (q ? '&' + q : ''); }
+  function logWeb(m) { try { new Image().src = HTTP + '/log?msg=' + encodeURIComponent(m); } catch (e) {} }
+  window.onerror = function (m, src, line) { logWeb('SHELL JSERROR ' + m + ' @' + src + ':' + line); };
+  logWeb('shell v2.1 loaded');
+
+  window.__dshdTheme = function (t) {
+    var rs = document.documentElement.style;
+    if (t && t.bg) rs.setProperty('--dshd-bg', t.bg);
+    if (t && t.fg) rs.setProperty('--dshd-fg', t.fg);
+  };
+
+  var POPUP = {
+    menu: document.getElementById('popup-menu'),
+    close: document.getElementById('popup-close'),
+    dl: document.getElementById('popup-downloads'),
+    settings: document.getElementById('popup-settings')
+  };
+  var CTX = document.getElementById('dl-ctx');
+  window.__dshdShowPopup = function (name, on) {
+    var el = POPUP[name];
+    if (!el) return;
+    el.classList.toggle('visible', !!on);
+    if (name === 'dl' && on) { dlSeenEpoch = dlMaxId; dlSaveSeen(); }
+    if (name === 'settings' && on) { loadDlSettings(); }
+  };
+
+  // ── 状态 ──
+  var dot = document.getElementById('dot');
+  var label = document.getElementById('status-label');
+  var menuStatus = document.getElementById('menu-status');
+  window.__dshdStatus = function (s) {
+    var cls = 'warn', text = '后端未就绪';
+    switch (s.state) {
+      case 'running': case 'external':
+        cls = 'ok'; text = '运行中 · 端口 ' + (s.port || '?') + (s.state === 'external' ? '（外部实例）' : '');
+        break;
+      case 'starting': cls = 'warn'; text = s.install ? '自动安装中…' : '启动中…'; break;
+      case 'restarting': cls = 'warn'; text = '重启中…'; break;
+      case 'error': cls = 'err'; text = s.next_retry_sec ? '异常 · ' + s.next_retry_sec + 's 后重试' : '异常'; break;
+      case 'stopped': cls = 'warn'; text = '已停止'; break;
+    }
+    dot.className = 'dot ' + cls;
+    label.textContent = text;
+    if (menuStatus) menuStatus.textContent = text;
+  };
+
+  // ── 标题栏按钮 ──
+  var sw = document.getElementById('sw');
+  var maxBtn = document.getElementById('max-btn');
+  var maxSvg = maxBtn.innerHTML;
+  var dlBtn = document.getElementById('dl-btn');
+  window.__dshdMaximized = function (isMax) { /* 保持功能，简单占位 */ };
+  var swKnob = sw.querySelector('.sw-knob');
+  // 滑柄动态宽度：底色文字与滑柄落点同中心（左 Harness 52px @1px / 右 Chat 38px @67px）
+  function swSet(on) {
+    sw.classList.toggle('on', on);
+    swKnob.textContent = on ? 'Chat' : 'Harness';
+    if (on) {
+      swKnob.style.width = '38px';
+      swKnob.style.left = '62px'; // 右落点：left 62px（与底色 Chat 同位置）
+    } else {
+      swKnob.style.width = '52px';
+      swKnob.style.left = '1.5px'; // 左落点：left 1.5px
+    }
+    sw.title = on ? '切回 DSH 主窗' : '切换到 DeepSeek 聊天页';
+  }
+  swSet(false);
+  sw.addEventListener('click', function () {
+    swSet(!sw.classList.contains('on'));
+    act('toggle-deepseek');
+  });
+
+  // 互斥：打开菜单先关下载/设置；反之亦然
+  document.getElementById('menu-btn').addEventListener('click', function () {
+    if (POPUP.dl.classList.contains('visible')) act('popup-dl');
+    if (POPUP.settings.classList.contains('visible')) act('popup-dl-settings');
+    act('popup-menu');
+  });
+  dlBtn.addEventListener('click', function () {
+    if (POPUP.menu.classList.contains('visible')) act('popup-menu');
+    act('popup-dl');
+  });
+  document.getElementById('min-btn').addEventListener('click', function () { act('min'); });
+  maxBtn.addEventListener('click', function () { act('max'); });
+  document.getElementById('close-btn').addEventListener('click', function () { act('close'); });
+
+  // ── 菜单项 ──
+  document.querySelectorAll('#popup-menu .item').forEach(function (it) {
+    it.addEventListener('click', function () {
+      var a = it.getAttribute('data-act');
+      if (a === 'dl') { act('popup-menu'); act('popup-dl'); return; }
+      if (a === 'dl-settings') { act('popup-menu'); act('popup-dl-settings'); return; }
+      act(a);
+      act('popup-menu');
+    });
+  });
+
+  // ── 退出弹层 ──
+  document.getElementById('c-cancel').addEventListener('click', function () { act('popup-close'); });
+  document.getElementById('c-tray').addEventListener('click', function () { act('min-tray'); act('popup-close'); });
+  document.getElementById('c-quit').addEventListener('click', function () { act('quit'); });
+
+  // ── 下载管理 ──
+  var dlList = document.getElementById('dl-list');
+  var dlEmpty = document.getElementById('dl-empty');
+  var DL_STATE = { downloading: '下载中', paused: '已暂停', done: '已完成', error: '失败' };
+  var dlSeenEpoch = -1, dlMaxId = 0, dlSettings = { dir: '', ask: false, autoShow: true };
+  // 已查看标记持久化：重启后不把历史完成项误报为“未查看”
+  function dlSaveSeen() { try { localStorage.setItem('dlSeenEpoch', String(dlSeenEpoch)); } catch (e) {} }
+  try { var _se = parseInt(localStorage.getItem('dlSeenEpoch') || '-1', 10); if (!isNaN(_se)) dlSeenEpoch = _se; } catch (e) {}
+  var ctxId = null;
+  var dlById = {}; // id → 任务（删除确认用）
+  var dlConfirmId = null;
+  var dlConfirmEl = document.getElementById('dl-confirm');
+  function showDelConfirm(id) {
+    var t = dlById[id];
+    document.getElementById('dl-confirm-name').textContent = (t && t.name) ? t.name : ('下载项 #' + id);
+    dlConfirmId = id;
+    dlConfirmEl.classList.add('visible');
+  }
+  function hideDelConfirm() {
+    dlConfirmEl.classList.remove('visible');
+    dlConfirmId = null;
+  }
+  document.getElementById('dl-confirm-cancel').addEventListener('click', function (e) {
+    e.stopPropagation();
+    hideDelConfirm();
+  });
+  document.getElementById('dl-confirm-ok').addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (dlConfirmId == null) return;
+    var delFile = document.getElementById('dl-confirm-file').checked ? 1 : 0;
+    act(delFile ? 'download-delete' : 'download-remove', 'id=' + dlConfirmId);
+    hideDelConfirm();
+  });
+  dlConfirmEl.addEventListener('mousedown', function (e) {
+    if (e.target === dlConfirmEl) hideDelConfirm(); // 点遮罩空白 = 取消
+  });
+
+  function dlBtnAct(a, id, extra) {
+    if (a === 'download-pause') act(a, 'id=' + id + '&on=' + (extra === '1' ? '1' : '0'));
+    else act(a, 'id=' + id);
+    hideCtx();
+  }
+  function bytesTxt(b) { return (b / 1048576).toFixed(1); }
+
+  var SVG_FILE = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M3.5 2h6l3 3v9h-9z"/><path d="M9.5 2v3h3"/></svg>';
+  var SVG_FOLDER = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M1.8 3.4h4.4l2 2h6v7.2H1.8z"/></svg>';
+  var SVG_TRASH = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M2.5 4h11M6.2 4V2.8h3.6V4M4.2 4l.7 9.2h6.2l.7-9.2M6.6 6.4v4.2M9.4 6.4v4.2"/></svg>';
+
+  function buildDlRow(t, pct) {
+    var deleted = !t.exists; // 文件已不在磁盘 → “已删除”态
+    var leftHtml = '', barHtml = '', btnsHtml = '', iconsHtml = '';
+    if (t.state === 'downloading' || t.state === 'paused') {
+      leftHtml = '<span class="dl-state">' + rowStateText(t, pct) + '</span>';
+      barHtml = '<div class="dl-bar"><div style="width:' + pct + '%"></div></div>';
+      btnsHtml = '<span class="dl-btns">' +
+        (t.state === 'downloading'
+          ? '<button data-a="download-pause" data-id="' + t.id + '" data-on="1">暂停</button><button data-a="download-cancel" data-id="' + t.id + '">取消</button>'
+          : '<button data-a="download-pause" data-id="' + t.id + '" data-on="0">继续</button><button data-a="download-cancel" data-id="' + t.id + '">取消</button>') +
+        '</span>';
+    } else if (t.state === 'done' && !deleted) {
+      leftHtml = '<a class="dl-open" data-id="' + t.id + '">打开文件</a>';
+      iconsHtml = '<button class="icb" data-a="download-open" data-id="' + t.id + '" title="打开文件夹">' + SVG_FOLDER + '</button>' +
+                  '<button class="icb del" data-a="del-row" data-id="' + t.id + '" title="删除">' + SVG_TRASH + '</button>';
+    } else if (t.state === 'done' && deleted) {
+      leftHtml = '<span class="dl-del-label">已删除</span>';
+      iconsHtml = '<button class="icb del" data-a="del-row" data-id="' + t.id + '" title="从列表删除">' + SVG_TRASH + '</button>';
+    } else {
+      // error / canceled
+      leftHtml = '<span class="dl-state">' + rowStateText(t, pct) + '</span>';
+      btnsHtml = '<span class="dl-btns"><button data-a="download-retry" data-id="' + t.id + '">重试</button></span>';
+      if (deleted) {
+        iconsHtml = '<button class="icb del" data-a="del-row" data-id="' + t.id + '" title="从列表删除">' + SVG_TRASH + '</button>';
+      } else {
+        iconsHtml = '<button class="icb del" data-a="del-row" data-id="' + t.id + '" title="删除">' + SVG_TRASH + '</button>';
+      }
+    }
+    var row = document.createElement('div');
+    row.className = 'dl-row' + (t.state === 'done' && !deleted ? ' clickable' : '') + (deleted ? ' deleted' : '');
+    row.setAttribute('data-id', t.id);
+    row.innerHTML =
+      '<div class="meta" title="' + t.name + '"><span class="fic">' + SVG_FILE + '</span><span class="fname">' + t.name + '</span></div>' +
+      '<div class="dl-actions">' + leftHtml +
+      (iconsHtml ? '<span class="row-icons">' + iconsHtml + '</span>' : '') +
+      '</div>' + barHtml + btnsHtml;
+    // 点击条目 = 打开文件（仅完成且文件仍在）
+    row.addEventListener('click', function () {
+      if (t.state === 'done' && !deleted) dlBtnAct('download-open-file', t.id);
+    });
+    // 右键菜单
+    row.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      showCtx(e.clientX, e.clientY, t);
+    });
+    // 打开文件链接
+    var openA = row.querySelector('.dl-open');
+    if (openA) {
+      openA.addEventListener('click', function (e) {
+        e.stopPropagation();
+        dlBtnAct('download-open-file', t.id);
+      });
+    }
+    row.querySelectorAll('button[data-a]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation(); // 防止冒泡到条目点击（打开文件）
+        var a = b.getAttribute('data-a');
+        if (a === 'del-row') {
+          // 已删除的文件：直接从列表移除（不弹窗）；文件仍在：二次确认
+          if (deleted) act('download-remove', 'id=' + t.id);
+          else showDelConfirm(t.id);
+          return;
+        }
+        dlBtnAct(a, Number(b.getAttribute('data-id')), b.getAttribute('data-on'));
+      });
+    });
+    return row;
+  }
+
+  var dlRowState = {}; // id -> 上次渲染时的 state（结构签名）
+  var dlRowExists = {}; // id -> 上次渲染时的文件存在性（结构签名）
+  var dlRowData = {};  // id -> 数据签名（进度/名称/错误）
+  function rowStateText(t, pct) {
+    var s = (DL_STATE[t.state] || t.state);
+    if (t.state === 'downloading' || t.state === 'paused') s += ' · ' + pct + '%';
+    if (t.total) s += ' · ' + bytesTxt(t.bytes) + '/' + bytesTxt(t.total) + ' MB';
+    if (t.error) s += ' · ' + t.error;
+    return s;
+  }
+  function rowDataSig(t, pct) {
+    return pct + '|' + (t.bytes || 0) + '|' + (t.total || 0) + '|' + (t.error || '') + '|' + t.name;
+  }
+  function renderDl(list) {
+    dlById = {};
+    var prevSib = null;
+    list.forEach(function (t) {
+      dlById[t.id] = t;
+      var pct = t.total > 0 ? Math.min(100, Math.round((t.bytes / t.total) * 100)) : 0;
+      var delNow = !t.exists;
+      var el = dlList.querySelector('.dl-row[data-id="' + t.id + '"]');
+      if (el) {
+        if (dlRowState[t.id] !== t.state || dlRowExists[t.id] !== delNow) {
+          // 状态/文件存在性切换 → 整行重建（链接↔已删除、按钮组、可点类变化）
+          var nr = buildDlRow(t, pct);
+          el.replaceWith(nr);
+          el = nr;
+          dlRowState[t.id] = t.state;
+          dlRowExists[t.id] = delNow;
+          dlRowData[t.id] = rowDataSig(t, pct);
+          prevSib = el;
+          return;
+        }
+        var ds = rowDataSig(t, pct);
+        if (dlRowData[t.id] !== ds) {
+          // 仅数据变化 → 原位更新文本与进度条（不重建 DOM）
+          dlRowData[t.id] = ds;
+          var st = el.querySelector('.dl-state');
+          if (st) st.textContent = rowStateText(t, pct);
+          var fname = el.querySelector('.fname');
+          if (fname && fname.textContent !== t.name) fname.textContent = t.name;
+          var meta = el.querySelector('.meta');
+          if (meta && meta.getAttribute('title') !== t.name) meta.setAttribute('title', t.name);
+          var bar = el.querySelector('.dl-bar > div');
+          if (bar) bar.style.width = pct + '%';
+        }
+        prevSib = el;
+        return;
+      }
+      // 新行
+      var row = buildDlRow(t, pct);
+      dlRowState[t.id] = t.state;
+      dlRowExists[t.id] = delNow;
+      dlRowData[t.id] = rowDataSig(t, pct);
+      dlList.insertBefore(row, prevSib ? prevSib.nextSibling : dlList.firstChild);
+      prevSib = row;
+    });
+    // 清理已从列表消失的行
+    Array.prototype.slice.call(dlList.querySelectorAll('.dl-row')).forEach(function (el) {
+      var id = Number(el.getAttribute('data-id'));
+      if (!dlById[id]) {
+        el.remove();
+        delete dlRowState[id];
+        delete dlRowExists[id];
+        delete dlRowData[id];
+      }
+    });
+    dlEmpty.hidden = list.length > 0;
+  }
+
+  function showCtx(x, y, t) {
+    ctxId = t.id;
+    var deleted = !t.exists;
+    var items = [];
+    if (t.state === 'done' && deleted) {
+      // 已从磁盘删除：仅复制链接与移除记录
+      items.push(['复制下载链接', 'download-copy-url']);
+      items.push('sep');
+      items.push(['从列表中删除', 'download-remove']);
+    } else if (t.state === 'done') {
+      items.push(['打开文件', 'download-open-file'], ['复制下载链接', 'download-copy-url']);
+      items.push(['在文件夹中显示', 'download-open']);
+      items.push('sep');
+      items.push(['删除文件', 'download-delete', 1], ['从列表中删除', 'download-remove']);
+    } else if (t.state === 'downloading' || t.state === 'paused') {
+      items.push([t.state === 'paused' ? '继续' : '暂停', 'download-pause', t.state === 'paused' ? '0' : '1']);
+      items.push(['复制下载链接', 'download-copy-url'], ['取消下载', 'download-cancel']);
+      items.push('sep');
+      items.push(['从列表中删除', 'download-remove']);
+    } else {
+      items.push(['重试', 'download-retry'], ['复制下载链接', 'download-copy-url']);
+      items.push('sep');
+      items.push(['删除文件', 'download-delete', 1], ['从列表中删除', 'download-remove']);
+    }
+    CTX.innerHTML = items.map(function (it) {
+      if (it === 'sep') return '<div class="sep"></div>';
+      var danger = it[2] === 1 ? ' danger' : '';
+      var actName = it[1], extra = it[2];
+      var payload = actName === 'download-pause' ? ' data-on="' + (extra === '0' ? '0' : '1') + '"' : '';
+      return '<button class="item' + danger + '" data-a="' + actName + '" data-id="' + t.id + '"' + payload + '>' + it[0] + '</button>';
+    }).join('');
+    CTX.classList.add('visible');
+    var w = CTX.offsetWidth, h = CTX.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+    CTX.style.left = Math.min(x, vw - w - 6) + 'px';
+    CTX.style.top = Math.min(y, vh - h - 6) + 'px';
+  }
+  function hideCtx() { CTX.classList.remove('visible'); ctxId = null; }
+  CTX.addEventListener('click', function (e) {
+    var b = e.target.closest('.item');
+    if (!b) return;
+    dlBtnAct(b.getAttribute('data-a'), Number(b.getAttribute('data-id')), b.getAttribute('data-on'));
+  });
+  document.addEventListener('mousedown', function (e) {
+    if (!CTX.classList.contains('visible')) return;
+    if (!e.target.closest('#dl-ctx')) hideCtx();
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') hideCtx();
+  });
+
+  // 下载设置
+  document.getElementById('dl-gear').addEventListener('click', function () {
+    act('popup-dl'); // 关掉下载面板
+    act('popup-dl-settings');
+  });
+  document.getElementById('dl-close').addEventListener('click', function () { act('popup-dl'); });
+  document.getElementById('set-cancel').addEventListener('click', function () { act('popup-dl-settings'); });
+  document.getElementById('set-save').addEventListener('click', function () {
+    var dir = document.getElementById('set-dir').value.trim();
+    var ask = document.getElementById('set-ask').checked ? 1 : 0;
+    var auto = document.getElementById('set-auto').checked ? 1 : 0;
+    // 立即回写本地状态（避免继续用旧值误触发自动弹出），再请求持久化
+    dlSettings.autoShow = auto === 1;
+    fetch(HTTP + '/dl-set?dir=' + encodeURIComponent(dir) + '&ask=' + ask + '&auto=' + auto)
+      .catch(function () {});
+    act('popup-dl-settings');
+  });
+  function loadDlSettings() {
+    fetch(HTTP + '/dl-settings').then(function (r) { return r.json(); }).then(function (s) {
+      if (!s) return;
+      dlSettings = { dir: s.dir || '', ask: !!s.ask, autoShow: !!s.autoShow };
+      document.getElementById('set-dir').value = s.dir || '';
+      document.getElementById('set-ask').checked = !!s.ask;
+      document.getElementById('set-auto').checked = !!s.autoShow;
+    }).catch(function () {});
+  }
+  loadDlSettings();
+
+  // ── 下载轮询：列表 + 徽标 + 自动弹出 + 询问保存位置 ──
+  var dlRingG = document.querySelector('#dl-btn .ring');
+  var dlRingFg = document.querySelector('#dl-btn .ring .fg');
+  var dlBar = document.getElementById('bar');
+  var RING_LEN = 54.0; // 2π×8.6，与 SVG r=8.6 一致
+  var knownIds = {};
+  var dlBadgePrev = false; // 徽标出现/消失动画状态机
+  var dlMenuBtn = document.getElementById('menu-btn');
+  // 徽标绝对定位：左缘 = ⋯ 按钮左侧 30px 处（不参与 flex 布局）
+  function placeDlBadge() {
+    var barR = dlBar.getBoundingClientRect();
+    var menuR = dlMenuBtn.getBoundingClientRect();
+    if (!barR.width) return;
+    dlBtn.style.left = (menuR.left - barR.left - 30) + 'px';
+  }
+  placeDlBadge();
+  window.addEventListener('resize', placeDlBadge);
+  var dlAskEl = document.getElementById('dl-ask');
+  var dlAskDir = document.getElementById('dl-ask-dir');
+  var dlAskName = document.getElementById('dl-ask-name');
+  var dlAskSeen = false;
+  document.getElementById('dl-ask-ok').addEventListener('click', function () {
+    act('dl-ask-confirm', 'dir=' + encodeURIComponent(dlAskDir.value.trim()));
+    dlAskEl.hidden = true;
+    dlAskSeen = false;
+  });
+  document.getElementById('dl-ask-no').addEventListener('click', function () {
+    act('dl-ask-cancel');
+    dlAskEl.hidden = true;
+    dlAskSeen = false;
+  });
+  var dlPollBusy = false;
+  var dlDirty = false;
+  function pollDl() {
+    if (dlPollBusy) { dlDirty = true; return; } // 正在刷新：标记脏，等待后补一次
+    dlPollBusy = true;
+    dlDirty = false;
+    fetch(HTTP + '/downloads').then(function (r) { return r.json(); }).then(function (list) {
+      renderDl(list);
+      dlMaxId = list.reduce(function (m, t) { return Math.max(m, t.id); }, 0);
+      var active = list.filter(function (t) { return t.state === 'downloading' || t.state === 'paused'; });
+      var activePct = 0;
+      if (active.length) {
+        var a = active[0];
+        activePct = a.total > 0 ? Math.min(100, Math.round((a.bytes / a.total) * 100)) : 0;
+      }
+      var maxTerm = list.filter(function (t) { return t.state !== 'downloading' && t.state !== 'paused'; })
+        .reduce(function (m, t) { return Math.max(m, t.id); }, -1);
+      // 徽标：仅在有 下载中 / 完成未查看 / 面板打开 时显示（不做“有历史常驻”）
+      var dlBadgeNow = false;
+      if (active.length > 0) {
+        dlBadgeNow = true;
+        dlRingG.style.display = '';
+        dlRingFg.style.strokeDashoffset = String(RING_LEN * (1 - activePct / 100));
+        dlBtn.title = '下载中 ' + activePct + '%';
+      } else if (maxTerm > dlSeenEpoch) {
+        dlBadgeNow = true;
+        dlRingG.style.display = '';
+        dlRingFg.style.strokeDashoffset = '0';
+        dlBtn.title = '有下载完成（未查看）';
+      } else if (POPUP.dl.classList.contains('visible')) {
+        dlBadgeNow = true;
+        dlRingG.style.display = 'none'; // 已查看：只显示图标
+        dlBtn.title = '下载管理';
+      }
+      // 出现/消失动画（徽标绝对定位，不挤开任何按钮）：
+      // 出现 → 拨片按实测宽度左移(200ms) → 徽标原位置淡入；
+      // 消失 → 徽标立即消失(透明度0) → 拨片右移复位
+      window.__dlBadgeWanted = dlBadgeNow;
+      if (dlBadgeNow && !dlBadgePrev) {
+        placeDlBadge();
+        var slide = dlMenuBtn.getBoundingClientRect().left - dlBtn.getBoundingClientRect().left - 2;
+        if (!(slide > 0)) slide = 24;
+        dlBar.style.setProperty('--dl-slide', '-' + Math.min(40, Math.round(slide)) + 'px');
+        dlBar.classList.add('dl-badge-open');
+        setTimeout(function () {
+          if (window.__dlBadgeWanted === true) dlBtn.classList.add('shown');
+        }, 200);
+      } else if (!dlBadgeNow && dlBadgePrev) {
+        // 立即消失：临时禁用 opacity 过渡（瞬间透明度 0），不播放淡出
+        dlBtn.style.transition = 'none';
+        dlBtn.classList.remove('shown');
+        void dlBtn.offsetWidth; // 强制重排，让“无过渡”的状态先落地
+        dlBtn.style.removeProperty('transition');
+        dlBar.classList.remove('dl-badge-open'); // 拨片右移复位
+      } else if (dlBadgeNow) {
+        dlBtn.classList.add('shown'); // 持续显示态
+      }
+      dlBadgePrev = dlBadgeNow;
+      list.forEach(function (t) {
+        if ((t.state === 'downloading' || t.state === 'paused') && !knownIds[t.id]) {
+          knownIds[t.id] = true;
+          if (dlSettings.autoShow && !POPUP.dl.classList.contains('visible')) {
+            act('popup-dl');
+          }
+        }
+      });
+      list.forEach(function (t) { knownIds[t.id] = true; });
+      // 询问保存位置
+      fetch(HTTP + '/dl-ask').then(function (r) { return r.json(); }).then(function (a) {
+        if (a && a.pending) {
+          dlAskName.textContent = a.name || '';
+          dlAskDir.value = a.dir || '';
+          if (dlAskEl.hidden) { dlAskEl.hidden = false; dlAskSeen = true; }
+          if (!POPUP.dl.classList.contains('visible') && dlAskSeen) {
+            act('popup-dl'); // 询问时强制打开面板
+            dlAskSeen = false;
+          }
+        } else {
+          dlAskEl.hidden = true;
+        }
+      }).catch(function () {});
+    }).catch(function () {})
+      .then(function () {
+        dlPollBusy = false;
+        if (dlDirty) pollDl(); // 刷新期间又有变更 → 补一次
+      });
+  }
+  // Rust 状态变更推送：立即刷新（徽标/面板零延迟响应）；1s 轮询仅作兜底
+  window.__dshdDlChanged = function () { pollDl(); };
+  setInterval(pollDl, 1000);
+  pollDl();
+
+  // ── 拖动：标题栏空白处 ──
+  document.getElementById('bar').addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    var t = e.target.closest('button');
+    if (t && (t.id === 'menu-btn' || t.id === 'dl-btn')) return;
+    act('main-click');
+    if (!t) act('drag');
+  });
+
+  // ── 弹层外点击 = 点外部（右键菜单/标签栏不计；下载面板在有进行中任务时由 Rust 保留）──
+  document.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    if (e.target.closest('#bar') || e.target.closest('.popup') || e.target.closest('#dl-ctx')) return;
+    act('main-click');
+  }, true);
+
+  // 窗口移动/缩放后由 Rust 调用：强制标题栏按新视口重排铺满（清掉缩放竞态导致的裁切）
+  window.__dshdOnResize = function () {
+    var bar = document.getElementById('bar');
+    if (!bar) return;
+    try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+    bar.style.left = '0px';
+    bar.style.right = '0px';
+    void bar.offsetWidth; // 强制重排
+  };
+
+  // ── 状态获取 ──
+  function fetchStatus() {
+    fetch(HTTP + '/status').then(function (r) { return r.json(); }).then(window.__dshdStatus).catch(function () {});
+  }
+  try {
+    if (window.__TAURI__ && window.__TAURI__.core) {
+      window.__TAURI__.core.invoke('get_backend_status').then(window.__dshdStatus).catch(function () { fetchStatus(); });
+    } else { fetchStatus(); }
+  } catch (e) { fetchStatus(); }
+  try {
+    if (window.__TAURI__ && window.__TAURI__.event) {
+      window.__TAURI__.event.listen('backend-status', function (e) { if (e.payload) window.__dshdStatus(e.payload); });
+    }
+  } catch (e) {}
+
+  var iconEl = document.getElementById('icon');
+  iconEl.onerror = function () {
+    fetch(HTTP + '/icon').then(function (r) { return r.blob(); })
+      .then(function (b) { iconEl.src = URL.createObjectURL(b); }).catch(function () {});
+  };
+  iconEl.src = './icon.png';
+
+  act('ping');
+</script>
+</body>
+</html>
