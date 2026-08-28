@@ -230,13 +230,25 @@ pub fn kill_owned(&self) {
     }
 
     /// 等待插件变更提示（模拟原本的安静期）；由 fs 监控另行触发提示。
+    /// Windows 下走 win_toast（tauri-plugin-notification 在 Windows 上无法设置
+    /// toast 小图标——notify-rust 忽略 icon 字段，图标只随 AUMID 解析，
+    /// 便携版 AUMID 未注册会回退到默认图标）。
     pub fn on_plugin_change(&self) {
         self.log_info("插件已变更：请手动重启后端以加载新插件");
-        let _ = tauri_plugin_notification::NotificationExt::notification(&self.app)
-            .builder()
-            .title("DSH Desktop — 插件已变更")
-            .body("请手动重启后端（悬浮条「重启」按钮）以加载新插件")
-            .show();
+        #[cfg(windows)]
+        {
+            if let Err(e) = crate::win_toast::show_plugin_change_toast() {
+                self.log_info(&format!("插件变更 toast 发送失败: {e}"));
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = tauri_plugin_notification::NotificationExt::notification(&self.app)
+                .builder()
+                .title("DSH Desktop — 插件已变更")
+                .body("请手动重启后端（悬浮条「重启」按钮）以加载新插件")
+                .show();
+        }
     }
 }
 

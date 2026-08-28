@@ -8,6 +8,8 @@ mod controls;
 mod downloads;
 mod settings;
 mod util;
+#[cfg(windows)]
+mod win_toast;
 
 use backend::Backend;
 use controls::AppState;
@@ -169,7 +171,11 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
 
     // DeepSeek 内容页：启动即创建（占位页、隐藏），首次切换才导航到 chat.deepseek.com
     // 必须在外壳层之前创建（子 WebView 后创建者在上层，外壳层要保持在最上）
+    // UA 覆盖为桌面 Chrome：WebView2 默认 UA 带 "Edg/" 会被 DeepSeek 风控识别为非常规环境
     let deepseek = tauri::WebviewBuilder::new("deepseek", WebviewUrl::App("empty.html".into()))
+        .user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        )
         .on_download(controls::intercept_download);
     let ds_webview = window.add_child(deepseek, LogicalPosition::new(0.0, 36.0), LogicalSize::new(1440.0, 864.0))?;
     let _ = ds_webview.hide();

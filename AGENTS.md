@@ -57,6 +57,25 @@ WebView2 页面无法直接调 Tauri API（生产模式），统一走 HTTP 控�
 - 关键锚点：「==== 重启后端」「==== 终止自有后端进程树 pid=」「[http] action:」「==== DSH Desktop 退出」「[close] 页面不可用」。
 - 排障先看日志时间线，能直接区分「action 没走到 / 回调没执行 / pid 没找到 / 杀进程失败」。
 
+## Windows toast 通知图标（插件变更提示，踩坑总结）
+
+- **tauri-plugin-notification 在 Windows 上无法设置 toast 小图标**：builder 的 `.icon()` 只会写 notify-rust 的 `icon` 字段，而 notify-rust 的 Windows 构建（`build_toast`）**从不读取该字段**；toast 左上角小图标只由 AppUserModelID（AUMID）决定（`CreateToastNotifierWithId(aumid)` → 图标 = 该 AUMID 注册的 IconUri / 快捷方式图标）。
+- 插件只在 exe 不在 `target\debug|release` 目录时设置 `app_id = identifier`；dev 构建不设置 → notify-rust 回退 `Toast::POWERSHELL_APP_ID` → **toast 显示 PowerShell 图标**。
+- 便携版 exe（dist 直拷，无 NSIS 安装）从未注册 `io.dsh.desktop` AUMID → Windows 回退到默认/通用图标——这就是「图标不对/原版图标」的根因。
+- **修复方式**（`win_toast.rs`，官方 unpackaged 模式）：
+  1. 把 `include_bytes!("../icons/128x128@2x.png")` 落盘到 `%LOCALAPPDATA%\DSH Desktop\icon.png`；
+  2. `reg add HKCU\Software\Classes\AppUserModelId\io.dsh.desktop /v DisplayName|IconUri`（幂等，每次刷新）；
+  3. 用 `tauri-winrt-notification`（已在依赖树：notify-rust 后端）`Toast::new(APP_ID).icon(path, IconCrop::Square, …)` 直接发；`.icon()` 的 appLogoOverride 要用**正斜杠**路径（`file:///C:/…`）。
+- 非 Windows 平台仍走 tauri-plugin-notification（`backend.rs::on_plugin_change` 的 `cfg` 分支）。
+
+## 主题桥采样与「标题栏变黑」（踩坑总结）
+
+- 标题栏底色链路：内容页 `theme_bridge_js` 采样 html/body 的**真实渲染色** → `/set-theme` → Rust 存 `state.theme` 并 `push_theme`（chrome WebView 设 `--dshd-bg/--dshd-fg` + `set_background_color`）。标题栏本身透明，颜色 = 窗口底色。
+- **`--dsw-alias-*` 只是皮肤（skin.css）里的主题变量；官方默认皮肤下 html/body 背景是透明的**（底色由 `#root` / `[data-dsh-frame]` 等面板绘制）。桥若只采样 html/body，会全部透明 → 落到硬编码回退 `#0b1220`（深蓝黑）→ 标题栏看起来「变纯黑」，且与官方浅色界面严重不匹配。
+- 皮肤激活时皮肤给 html 显式背景色（蓝色幻想 `#e8ecf5`/`#101624`）→ 采样正常 → 标题栏贴合皮肤。所以「切回原始皮肤 → 标题栏变黑」的根因是**桥的回退值**，不是皮肤。
+- **修复**：html/body 透明时继续向下采样 `[data-dsh-frame]` / `#root` / `[data-dsh-app]` 的真实渲染色；最终兜底也按 `data-ds-dark-theme` 区分（暗 `#0b1220` / 亮 `#ffffff`）。
+- 注意「刷新后好了、不刷新坏」的迷惑性：刷新后走的是 boot 页/重新加载的初采样（可能恰好正常），不刷新的运行时切换才暴露真实采样结果——**要看 `/theme` 接口的最终值**（`http://127.0.0.1:19431/theme`），不要凭肉眼时序下结论。
+
 ## 会话协作约定
 
 - 记忆召回与写回由 MemOS Cloud 插件自动完成，**不要**手动调用 `mcp__memos-mcp__*`（仅主动管理记忆时按需使用）。

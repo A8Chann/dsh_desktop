@@ -828,10 +828,21 @@ pub fn theme_bridge_js() -> String {
         var b = cs.backgroundColor;
         if (b && b !== 'rgba(0, 0, 0, 0)' && b !== 'transparent') { el = cand[i]; break; }
       }
+      // 官方默认皮肤下 html/body 背景透明（底色由 #root / AppFrame 等面板绘制），
+      // 继续向下采样真实渲染色，避免落到硬编码回退值把标题栏带黑。
+      if (!el) {
+        var deep = [document.querySelector('[data-dsh-frame]'), document.querySelector('#root'), document.querySelector('[data-dsh-app]')];
+        for (i = 0; i < deep.length; i++) {
+          if (!deep[i]) continue;
+          var dcs = getComputedStyle(deep[i]);
+          var db = dcs.backgroundColor;
+          if (db && db !== 'rgba(0, 0, 0, 0)' && db !== 'transparent') { el = deep[i]; break; }
+        }
+      }
       var bg = el ? getComputedStyle(el).backgroundColor : '';
       var fg = document.body ? getComputedStyle(document.body).color : '';
       var dark = document.body ? document.body.hasAttribute('data-ds-dark-theme') : true;
-      if (!bg) bg = '#0b1220';
+      if (!bg) bg = dark ? '#0b1220' : '#ffffff';
       if (!fg || fg === 'rgb(0, 0, 0)') fg = dark ? 'rgb(230, 236, 255)' : 'rgb(20, 28, 48)';
       return JSON.stringify({ bg: bg, fg: fg });
     } catch (e) { return ''; }
