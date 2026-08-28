@@ -325,6 +325,10 @@ fn spawn_own(
     let workspace = settings.lock().unwrap().workspace.clone().unwrap_or_default();
 
     // 3) 拉起
+    log.info(&format!(
+        "[backend] 尝试启动：node={} dsh={} args=web --no-open --port={} cwd={}",
+        node_bin, dsh_bin, port, workspace
+    ));
     let mut child = match Command::new(&node_bin)
         .args([&dsh_bin, "web", "--no-open", "--port", &port.to_string()])
         .current_dir(&workspace)
@@ -357,6 +361,7 @@ fn spawn_own(
     let stdout = child.stdout.take().map(BufReader::new);
     if let Some(er) = child.stderr.take() {
         let app2 = app.clone();
+        let log2 = log.clone();
         std::thread::spawn(move || {
             let mut reader = BufReader::new(er);
             let mut line = String::new();
@@ -368,6 +373,7 @@ fn spawn_own(
                         let t = line.trim_end();
                         if !t.is_empty() {
                             let _ = app2.emit("backend-log", t.to_string());
+                            log2.info(&format!("[backend-stderr] {}", t)); // 落盘，便于排查启动失败
                         }
                     }
                 }
@@ -602,7 +608,43 @@ fn resolve_dsh(explicit: Option<&str>) -> Option<String> {
             for name in ["dsh.cmd", "dsh.bat", "dsh.exe"] {
                 let p = dir.join(name);
                 if p.exists() {
-                    // cmd shim：解析到真实 bin.js（dsh.cmd 内容含 node 路径；这里直接返回 shim 由外层 Command new 处理）
+                    // 优先：npm 全局布局的真实 bin.js（<npm>\node_modules\@deepseek-ai\dsh\lib\bin.js）
+                    let binjs = dir
+                        .join("node_modules")
+                        .join("@deepseek-ai")
+                        .join("dsh")
+                        .join("lib")
+                        .join("bin.js");
+                    if binjs.exists() {
+                        return Some(binjs.to_string_lossy().to_string());
+                    }
+                    // 解析 shim 内容中引用的 bin.js 路径（npm cmd shim 形如：node "%~dp0\node_modules\...\bin.js" %*）
+                    if let Ok(content) = std::fs::read_to_string(&p) {
+                        for line in content.lines() {
+                            if !line.to_lowercase().contains("bin.js") {
+                                continue;
+                            }
+                            if let Some(qs) = line.find('"').map(|i| &line[i + 1..]) {
+                                if let Some(qe) = qs.find('"') {
+                                    let raw = &qs[..qe];
+                                    let expanded = raw
+                                        .replace("%~dp0", "")
+                                        .replace("%dp0", "")
+                                        .trim_start_matches(['\\', ' ', '\t', '/'])
+                                        .to_string();
+                                    let full = if std::path::Path::new(&expanded).is_absolute() {
+                                        expanded
+                                    } else {
+                                        dir.join(&expanded).to_string_lossy().to_string()
+                                    };
+                                    if std::path::Path::new(&full).exists() {
+                                        return Some(full);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // 兜底：返回 shim 本身（node 直接执行 .cmd 会失败——仅在最坏情况保留）
                     return Some(p.to_string_lossy().to_string());
                 }
             }

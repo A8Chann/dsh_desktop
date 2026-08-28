@@ -9,6 +9,7 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 - 发布：把 release exe 复制为 `dist/DSH-Desktop-<version>-tauri.exe`。
 - **不要把 exe 复制到用户桌面**——桌面部署由用户自己完成，助手只更新 dist。
 - 版本号需三处同步：`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、注入脚本标题栏 badge（`controls.rs` 的 INJECT_JS 里「封装 vX.Y.Z」与 badge 两处字符串）。
+- **版本约定（用户指定）**：未发版的小版本统一用 `x.x.1`，**第三位补丁号无限递增**（2.0.1 → 2.0.2 → …）；只有正式发版（打 tag/Release）时才推进次版本/主版本。frontend/chrome.html 的 badge 与「封装」也要同步该版本号。
 
 ## 本地 HTTP 控制服务（127.0.0.1:19431，仅本机、无鉴权）
 
