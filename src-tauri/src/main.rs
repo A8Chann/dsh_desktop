@@ -95,6 +95,18 @@ fn main() {
             })));
         }
 
+        // 开始菜单快捷方式（AUMID + 应用图标）：一次性创建/刷新。
+        // 非打包应用 toast 图标的官方途径；必须在主线程启动期做（COM），
+        // 不能放到 toast 的 watcher 线程（堆损坏崩溃 0xc0000374，实测）。
+        #[cfg(windows)]
+        {
+            if let Some(state) = app.try_state::<Arc<AppState>>() {
+                if let Err(e) = win_toast::ensure_start_menu_shortcut() {
+                    state.log.info(&format!("开始菜单快捷方式创建失败: {e}"));
+                }
+            }
+        }
+
         // 壳窗口：标题栏 chrome WebView + DSH 内容 WebView；DeepSeek 内容 WebView 首次切换时懒建
         create_main_window(app)?;
 
