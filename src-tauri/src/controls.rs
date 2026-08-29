@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tauri::window::{Effect, EffectsBuilder};
 use tauri::WebviewBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl};
 
@@ -38,8 +39,20 @@ pub struct AppState {
     pub last_popup_shown_ms: AtomicU64,
     /// DeepSeek 内容页是否已完成首次导航（chat.deepseek.com）。
     pub deepseek_loaded: AtomicBool,
-    /// 最近一次从 DSH 页采到的主题色（bg, fg）——推给标题栏与弹层使用。
-    pub theme: Mutex<Option<(String, String)>>,
+    /// 各内容页最近上报的主题色（bg, fg）：切页时按当前显示页取用。
+    pub theme_dsh: Mutex<Option<(String, String)>>,
+    pub theme_deepseek: Mutex<Option<(String, String)>>,
+}
+
+impl AppState {
+    /// 当前显示页（dsh / deepseek）的主题缓存。
+    pub fn current_theme(&self) -> Option<(String, String)> {
+        if self.deepseek_shown.load(Ordering::SeqCst) {
+            self.theme_deepseek.lock().unwrap().clone()
+        } else {
+            self.theme_dsh.lock().unwrap().clone()
+        }
+    }
 }
 
 // ?????????????????????????????????????????????????????? ???????????????????????Deepseek-Harness-EAC????????????????????????????????????????????????????????
@@ -718,7 +731,7 @@ fn overlay_span(name: &str) -> f64 {
     match name {
         "popup-menu" => 36.0 + 372.0,
         "popup-downloads" => 36.0 + 546.0,
-        "popup-settings" => 36.0 + 340.0,
+        "popup-settings" => 36.0 + 420.0,
         _ => f64::INFINITY,
     }
 }
@@ -809,11 +822,12 @@ fn close_all_overlays(app: &AppHandle, state: &Arc<AppState>) {
     overlay_set(app, state, "popup-settings", false);
 }
 
-/// 注入 DSH 页的主题桥（事件驱动，替代 Rust 轮询）：
+/// 注入内容页的主题桥（事件驱动，替代 Rust 轮询）：
 /// 页面内 MutationObserver 监听主题相关属性变化 + 1s 本地 diff（值变了才上报）→ img /set-theme →
-/// Rust 更新全局主题并立即推给外壳层（标题栏与弹层共用，切换几乎零延迟）。
+/// Rust 按 src 存入对应主题槽；仅当前显示页的上报会立即推给外壳层（标题栏与弹层共用）。
 /// 注：`--dsw-alias-*` 只是启动页别名，主界面根部读不到；改采样 documentElement/body 真实渲染色。
-pub fn theme_bridge_js() -> String {
+/// src = "dsh" | "deepseek"（DeepSeek 页无 data-ds-dark-theme，暗色兜底用 prefers-color-scheme）。
+pub fn theme_bridge_js(src: &str) -> String {
     r##"(function () {
   if (window.__dshdThemeBridge) return;
   window.__dshdThemeBridge = true;
@@ -840,10 +854,18 @@ pub fn theme_bridge_js() -> String {
         }
       }
       var bg = el ? getComputedStyle(el).backgroundColor : '';
-      var fg = document.body ? getComputedStyle(document.body).color : '';
-      var dark = document.body ? document.body.hasAttribute('data-ds-dark-theme') : true;
+      // 暗色判定：dsh 页有 data-ds-dark-theme（无属性 = 亮色）；DeepSeek 页兜底跟系统主题
+      var dark = false;
+      if (document.body && document.body.hasAttribute('data-ds-dark-theme')) dark = true;
+      else if ('__SRC__' !== 'dsh') {
+        dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      }
       if (!bg) bg = dark ? '#0b1220' : '#ffffff';
-      if (!fg || fg === 'rgb(0, 0, 0)') fg = dark ? 'rgb(230, 236, 255)' : 'rgb(20, 28, 48)';
+      // 前景色按背景亮度推导，不取页面 body 的 color：外部页（如 chat.deepseek.com）
+      // 的 body color 可能是链接紫等与标题栏无关的值，直接套用会让标题栏文字失调。
+      var m = bg.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      var lum = m ? (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) : (dark ? 0 : 255);
+      var fg = lum < 140 ? 'rgb(230, 236, 255)' : 'rgb(20, 28, 48)';
       return JSON.stringify({ bg: bg, fg: fg });
     } catch (e) { return ''; }
   }
@@ -851,7 +873,7 @@ pub fn theme_bridge_js() -> String {
     var v = read();
     if (!v || v === last) return; // 值没变不重复上报
     last = v;
-    new Image().src = 'http://127.0.0.1:19431/set-theme?t=' + encodeURIComponent(v);
+    new Image().src = 'http://127.0.0.1:19431/set-theme?src=__SRC__&t=' + encodeURIComponent(v);
   }
   send();
   window.addEventListener('load', send);
@@ -866,7 +888,7 @@ pub fn theme_bridge_js() -> String {
   else startObs();
   setInterval(send, 1000);
 })();"##
-    .to_string()
+    .replace("__SRC__", src)
 }
 
 /// 解析 CSS 颜色字符串（#rrggbb / #rgb / rgb(r,g,b)）为 (r,g,b)。
@@ -902,19 +924,48 @@ fn parse_color(s: &str) -> Option<(u8, u8, u8)> {
     None
 }
 
-/// 把主题色立即下发给外壳层（标题栏 + 弹层都在同一 WebView），
-/// 并同步设置主窗背景色（标题栏透明，底色由窗口承担 → 永远满窗，不受缩放竞态裁切）。
-fn push_theme(app: &AppHandle, _state: &AppState, bg: &str, fg: &str) {
+/// 按设置的窗口材质 + 主题亮度应用窗口效果。
+/// acrylic = 亚克力（实时模糊下层窗口，真"透"）；mica = 云母（仅采样壁纸做底纹，不透窗口）；
+/// none / 材质不可用（Win10 等）→ 纯色底，避免透明窗口露底。
+pub fn apply_window_effect(app: &AppHandle, state: &AppState, bg: &str) {
+    let Some(win) = app.get_window("main") else {
+        return;
+    };
+    let rgb = parse_color(bg);
+    let dark = rgb
+        .map(|(r, g, b)| 0.299 * (r as f64) + 0.587 * (g as f64) + 0.114 * (b as f64) < 140.0)
+        .unwrap_or(true);
+    let material = state.settings.lock().unwrap().window_material.to_lowercase();
+    let effect = match material.as_str() {
+        "none" => None,
+        "mica" => Some(if dark { Effect::MicaDark } else { Effect::MicaLight }),
+        _ => Some(Effect::Acrylic),
+    };
+    let applied = match effect {
+        Some(e) => win
+            .set_effects(EffectsBuilder::new().effect(e).build())
+            .is_ok(),
+        None => {
+            // 必须传 None 才会清除材质；传空的 EffectsBuilder 是空效果列表，DWM 材质会原样保留
+            let _ = win.set_effects(None::<tauri::utils::config::WindowEffectsConfig>);
+            false
+        }
+    };
+    if !applied {
+        if let Some((r, g, b)) = rgb {
+            let _ = win.set_background_color(Some(tauri::window::Color(r, g, b, 255)));
+        }
+    }
+}
+
+/// 把主题色立即下发给外壳层（标题栏 + 弹层都在同一 WebView），并刷新窗口材质。
+fn push_theme(app: &AppHandle, state: &AppState, bg: &str, fg: &str) {
     if let Some(chrome) = app.get_webview("chrome") {
         let esc = |x: &str| x.replace('\\', "\\\\").replace('"', "\\\"");
         let json = format!(r#"{{"bg":"{}","fg":"{}"}}"#, esc(bg), esc(fg));
         let _ = chrome.eval(&format!("window.__dshdTheme && window.__dshdTheme({});", json));
     }
-    if let Some((r, g, b)) = parse_color(bg) {
-        if let Some(win) = app.get_window("main") {
-            let _ = win.set_background_color(Some(tauri::window::Color(r, g, b, 255)));
-        }
-    }
+    apply_window_effect(app, state, bg);
 }
 
 /// 注入 DSH 内容页的点击转发：用户在 DSH 页任意处按下鼠标左键 → 上报 main-click（视为“点外部”关弹层）。
@@ -1079,6 +1130,18 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
                 }
                 if let Some(main) = app2.get_window("main") {
                     let _ = main.set_focus();
+                }
+                // 切换后立即按目标页主题缓存刷新标题栏/窗口材质（无缓存则等桥上报）
+                if let Some((bg, fg)) = state2.current_theme() {
+                    push_theme(&app2, &state2, &bg, &fg);
+                }
+                // 回推开关状态：菜单项/托盘等入口切换时，标题栏滑柄与菜单文案同步
+                if let Some(c) = app2.get_webview("chrome") {
+                    let on = state2.deepseek_shown.load(Ordering::SeqCst);
+                    let _ = c.eval(&format!(
+                        "window.__dshdSwitchState && window.__dshdSwitchState({});",
+                        on
+                    ));
                 }
             });
             true
@@ -1328,9 +1391,11 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                         state.log.info(&format!("[web] {}", msg));
                         format!("HTTP/1.1 200 OK\r\n{}\r\n{{}}", cors)
                     }
-                    // DSH 页主题桥上报（t=JSON 字符串）→ 更新全局主题 → 立即推给标题栏与所有可见弹窗（事件驱动）
+                    // 内容页主题桥上报（src=dsh|deepseek，t=JSON）→ 存对应主题槽；
+                    // 仅当前显示页的上报立即推给标题栏与窗口材质（事件驱动）
                     ("GET", "/set-theme") => {
                         let raw = url_decode(&q.get("t").cloned().unwrap_or_default());
+                        let src = q.get("src").map(|s| s.as_str()).unwrap_or("dsh").to_string();
                         let mut bg = String::new();
                         let mut fg = String::new();
                         if raw.starts_with('{') {
@@ -1340,18 +1405,25 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                             }
                         }
                         if !bg.is_empty() {
-                            *state.theme.lock().unwrap() = Some((bg.clone(), fg.clone()));
-                            let app2 = app.clone();
-                            let state2 = state.clone();
-                            let _ = app.run_on_main_thread(move || {
-                                push_theme(&app2, &state2, &bg, &fg);
-                            });
+                            let from_deepseek = src == "deepseek";
+                            {
+                                let slot = if from_deepseek { &state.theme_deepseek } else { &state.theme_dsh };
+                                *slot.lock().unwrap() = Some((bg.clone(), fg.clone()));
+                            }
+                            // 隐藏页的上报只入缓存，不打扰当前显示页的标题栏
+                            if from_deepseek == state.deepseek_shown.load(Ordering::SeqCst) {
+                                let app2 = app.clone();
+                                let state2 = state.clone();
+                                let _ = app.run_on_main_thread(move || {
+                                    push_theme(&app2, &state2, &bg, &fg);
+                                });
+                            }
                         }
                         format!("HTTP/1.1 200 OK\r\n{}\r\n{{}}", cors)
                     }
-                    // 弹窗打开时自取当前主题（全局变量）
+                    // 弹窗打开时自取当前主题（当前显示页的主题槽）
                     ("GET", "/theme") => {
-                        let t = state.theme.lock().unwrap().clone();
+                        let t = state.current_theme();
                         let payload = match t {
                             Some((bg, fg)) => format!(
                                 r#"{{"bg":"{}","fg":"{}"}}"#,
@@ -1405,32 +1477,58 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                                     .unwrap_or_default()
                             });
                         let payload = format!(
-                            r#"{{"dir":"{}","ask":{},"autoShow":{}}}"#,
+                            r#"{{"dir":"{}","ask":{},"autoShow":{},"tint":{},"material":"{}"}}"#,
                             dir.replace('\\', "\\\\").replace('"', "\\\""),
                             s.ask_download_location,
-                            s.show_downloads_on_start
+                            s.show_downloads_on_start,
+                            s.titlebar_tint,
+                            s.window_material
                         );
                         format!(
                             "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{}",
                             cors, payload
                         )
                     }
-                    // 下载设置保存（dir=&ask=&auto=）
+                    // 设置保存（dir=&ask=&auto=&tint=&material=）
                     ("GET", "/dl-set") => {
                         let dir = url_decode(&q.get("dir").cloned().unwrap_or_default());
                         let ask = q.get("ask").map(|v| v == "1").unwrap_or(false);
                         let auto = q.get("auto").map(|v| v == "1").unwrap_or(true);
+                        let tint = q
+                            .get("tint")
+                            .and_then(|v| v.parse::<u8>().ok())
+                            .map(|v| v.min(100));
+                        let material = q
+                            .get("material")
+                            .map(|v| v.to_lowercase())
+                            .filter(|v| v == "acrylic" || v == "mica" || v == "none");
                         {
                             let mut s = state.settings.lock().unwrap();
                             s.download_dir = if dir.trim().is_empty() { None } else { Some(dir.trim().to_string()) };
                             s.ask_download_location = ask;
                             s.show_downloads_on_start = auto;
+                            if let Some(t) = tint {
+                                s.titlebar_tint = t;
+                            }
+                            if let Some(m) = material.clone() {
+                                s.window_material = m;
+                            }
                             crate::settings::save_settings(&s);
                         }
                         state.log.info(&format!(
-                            "[download] 设置已保存 dir={:?} ask={} auto={}",
-                            state.settings.lock().unwrap().download_dir, ask, auto
+                            "[settings] 已保存 dir={:?} ask={} auto={} tint={:?} material={:?}",
+                            state.settings.lock().unwrap().download_dir, ask, auto, tint, material
                         ));
+                        // 材质改动立即生效（无需重启）
+                        if material.is_some() {
+                            if let Some((bg, _)) = state.current_theme() {
+                                let app2 = app.clone();
+                                let state2 = state.clone();
+                                let _ = app.run_on_main_thread(move || {
+                                    apply_window_effect(&app2, &state2, &bg);
+                                });
+                            }
+                        }
                         format!("HTTP/1.1 200 OK\r\n{}\r\n{{}}", cors)
                     }
                     _ => format!("HTTP/1.1 404 Not Found\r\n{}\r\n{{}}", cors),

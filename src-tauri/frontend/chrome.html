@@ -7,6 +7,8 @@
   :root {
     --dshd-bg: #0b1220;
     --dshd-fg: #e6ecff;
+    /* 标题栏主题色浓度：设置面板可调（越低越透、云母材质越明显） */
+    --dshd-tint: 18%;
   }
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
   body {
@@ -19,9 +21,10 @@
     position: fixed; top: 0; left: 0; right: 0; height: 36px; z-index: 10;
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 6px 0 10px; box-sizing: border-box;
-    /* 无背景色画布（底色由窗口背景随主题承担）——彻底规避缩放竞态导致背景被裁 */
-    background: transparent;
-    backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    /* 半透明主题色叠在窗口 Mica 云母材质上（真毛玻璃由 DWM 绘制；
+       跨 WebView 的 CSS backdrop-filter 无效，故不再使用）。
+       浓度由设置面板的 --dshd-tint 控制。 */
+    background: color-mix(in srgb, var(--dshd-bg) var(--dshd-tint, 18%), transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--dshd-fg) 8%, transparent);
   }
   .left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
@@ -235,9 +238,28 @@
   .dl-row.clickable:active:has(a:active, button:active) { background: color-mix(in srgb, var(--dshd-fg) 9%, transparent); }
   #dl-empty { text-align: center; color: color-mix(in srgb, var(--dshd-fg) 45%, transparent); font-size: 12px; padding: 14px 0 6px; }
 
-  /* 下载设置 */
+  /* 设置 */
   #popup-settings { top: 44px; right: 12px; width: 400px; padding: 12px 14px 14px; }
   #popup-settings h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+  .set-group {
+    font-size: 11px; font-weight: 600; letter-spacing: .4px;
+    color: color-mix(in srgb, var(--dshd-fg) 48%, transparent);
+    padding-bottom: 4px; margin: 4px 0 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--dshd-fg) 10%, transparent);
+  }
+  .set-tip {
+    font-size: 11px; line-height: 16px; margin: -4px 0 12px;
+    color: color-mix(in srgb, var(--dshd-fg) 42%, transparent);
+  }
+  .set-row input[type="range"] {
+    flex: 1; min-width: 0; accent-color: #3b82f6; height: 18px;
+  }
+  .set-row select {
+    flex: 1; min-width: 0; padding: 5px 8px; border-radius: 7px;
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    background: color-mix(in srgb, var(--dshd-bg) 92%, white);
+    color: var(--dshd-fg); font: inherit; font-size: 12px; outline: none; cursor: pointer;
+  }
   .set-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12.5px; }
   .set-row label { flex: none; width: 150px; color: color-mix(in srgb, var(--dshd-fg) 70%, transparent); }
   .set-row input[type="text"] {
@@ -280,7 +302,7 @@
   <div class="left">
     <img class="icon" id="icon" alt="" draggable="false" />
     <span class="title">DSH Desktop</span>
-    <span class="badge">v2.1.0</span>
+    <span class="badge">v2.2.0</span>
     <span class="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
   </div>
   <div class="right">
@@ -306,14 +328,14 @@
 
 <div class="popup" id="popup-menu">
   <div class="mh">
-    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.1.0</span></div>
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.2.0</span></div>
     <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
   </div>
   <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
   <button class="item" data-act="reload"><span>重新加载</span><span class="kbd">刷新页面</span></button>
   <button class="item" data-act="toggle-deepseek"><span>切换 DeepSeek 聊天页</span><span class="kbd">DeepSeek</span></button>
   <button class="item" data-act="dl"><span>下载管理</span><span class="kbd">导出文件</span></button>
-  <button class="item" data-act="dl-settings"><span>下载设置</span><span class="kbd">保存位置</span></button>
+  <button class="item" data-act="dl-settings"><span>设置</span><span class="kbd">外观 · 下载</span></button>
   <div class="sep"></div>
   <button class="item" data-act="browser">在浏览器中打开</button>
   <div class="sep"></div>
@@ -363,7 +385,23 @@
 </div>
 
 <div class="popup" id="popup-settings">
-  <h3>下载设置</h3>
+  <h3>设置</h3>
+  <div class="set-group">外观</div>
+  <div class="set-row">
+    <label>窗口材质</label>
+    <select id="set-material">
+      <option value="acrylic">亚克力（模糊下层窗口）</option>
+      <option value="mica">云母（仅壁纸色底纹）</option>
+      <option value="none">无（纯色）</option>
+    </select>
+  </div>
+  <div class="set-row">
+    <label>标题栏透明度</label>
+    <input type="range" id="set-tint" min="0" max="100" step="2" />
+    <span class="set-hint" id="set-tint-val">18%</span>
+  </div>
+  <div class="set-tip">亚克力会实时模糊窗口后面的所有内容（含其它应用）；云母只采样桌面壁纸配色，不透出窗口。透明度数值越小越透，拖动即时预览。</div>
+  <div class="set-group">下载</div>
   <div class="set-row">
     <label>下载保存位置</label>
     <input type="text" id="set-dir" spellcheck="false" />
@@ -453,6 +491,13 @@
     sw.title = on ? '切回 DSH 主窗' : '切换到 DeepSeek 聊天页';
   }
   swSet(false);
+  // Rust 切换完成后回推真实状态：菜单项/托盘/开关任意入口都能同步滑柄与菜单文案。
+  // 开关自身点击仍先本地翻转求即时反馈，这里做最终校正。
+  window.__dshdSwitchState = function (on) {
+    swSet(!!on);
+    var mi = document.querySelector('#popup-menu .item[data-act="toggle-deepseek"] span');
+    if (mi) mi.textContent = on ? '切回 DSH 主窗' : '切换 DeepSeek 聊天页';
+  };
   sw.addEventListener('click', function () {
     swSet(!sw.classList.contains('on'));
     act('toggle-deepseek');
@@ -492,7 +537,7 @@
   var dlList = document.getElementById('dl-list');
   var dlEmpty = document.getElementById('dl-empty');
   var DL_STATE = { downloading: '下载中', paused: '已暂停', done: '已完成', error: '失败' };
-  var dlSeenEpoch = -1, dlMaxId = 0, dlSettings = { dir: '', ask: false, autoShow: true };
+  var dlSeenEpoch = -1, dlMaxId = 0, dlSettings = { dir: '', ask: false, autoShow: true, tint: 18 };
   // 已查看标记持久化：重启后不把历史完成项误报为“未查看”
   function dlSaveSeen() { try { localStorage.setItem('dlSeenEpoch', String(dlSeenEpoch)); } catch (e) {} }
   try { var _se = parseInt(localStorage.getItem('dlSeenEpoch') || '-1', 10); if (!isNaN(_se)) dlSeenEpoch = _se; } catch (e) {}
@@ -725,30 +770,52 @@
     if (e.key === 'Escape') hideCtx();
   });
 
-  // 下载设置
+  // 设置：外观（标题栏透明度）+ 下载
+  var setTint = document.getElementById('set-tint');
+  var setTintVal = document.getElementById('set-tint-val');
+  function applyTint(v) {
+    document.documentElement.style.setProperty('--dshd-tint', v + '%');
+    if (setTintVal) setTintVal.textContent = v + '%';
+  }
+  // 拖动实时预览（不落盘，保存后才持久化）
+  setTint.addEventListener('input', function () { applyTint(Number(setTint.value)); });
   document.getElementById('dl-gear').addEventListener('click', function () {
     act('popup-dl'); // 关掉下载面板
     act('popup-dl-settings');
   });
   document.getElementById('dl-close').addEventListener('click', function () { act('popup-dl'); });
-  document.getElementById('set-cancel').addEventListener('click', function () { act('popup-dl-settings'); });
+  // 取消：还原为上次保存的值（撤销实时预览）
+  document.getElementById('set-cancel').addEventListener('click', function () {
+    applyTint(dlSettings.tint);
+    setTint.value = dlSettings.tint;
+    act('popup-dl-settings');
+  });
   document.getElementById('set-save').addEventListener('click', function () {
     var dir = document.getElementById('set-dir').value.trim();
     var ask = document.getElementById('set-ask').checked ? 1 : 0;
     var auto = document.getElementById('set-auto').checked ? 1 : 0;
+    var tint = Number(setTint.value);
+    var material = document.getElementById('set-material').value;
     // 立即回写本地状态（避免继续用旧值误触发自动弹出），再请求持久化
     dlSettings.autoShow = auto === 1;
-    fetch(HTTP + '/dl-set?dir=' + encodeURIComponent(dir) + '&ask=' + ask + '&auto=' + auto)
+    dlSettings.tint = tint;
+    dlSettings.material = material;
+    fetch(HTTP + '/dl-set?dir=' + encodeURIComponent(dir) + '&ask=' + ask + '&auto=' + auto + '&tint=' + tint + '&material=' + material)
       .catch(function () {});
     act('popup-dl-settings');
   });
   function loadDlSettings() {
     fetch(HTTP + '/dl-settings').then(function (r) { return r.json(); }).then(function (s) {
       if (!s) return;
-      dlSettings = { dir: s.dir || '', ask: !!s.ask, autoShow: !!s.autoShow };
+      var tint = (typeof s.tint === 'number') ? s.tint : 18;
+      var material = s.material || 'acrylic';
+      dlSettings = { dir: s.dir || '', ask: !!s.ask, autoShow: !!s.autoShow, tint: tint, material: material };
       document.getElementById('set-dir').value = s.dir || '';
       document.getElementById('set-ask').checked = !!s.ask;
       document.getElementById('set-auto').checked = !!s.autoShow;
+      document.getElementById('set-material').value = material;
+      setTint.value = tint;
+      applyTint(tint);
     }).catch(function () {});
   }
   loadDlSettings();

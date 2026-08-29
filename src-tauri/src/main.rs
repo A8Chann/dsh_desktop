@@ -81,7 +81,8 @@ fn main() {
             popup_settings_visible: AtomicBool::new(false),
             last_popup_shown_ms: AtomicU64::new(0),
             deepseek_loaded: AtomicBool::new(false),
-            theme: Mutex::new(None),
+            theme_dsh: Mutex::new(None),
+            theme_deepseek: Mutex::new(None),
         });
         app.manage(state.clone());
         // 自管下载器（拦截 WebView2 下载后由 Rust 线程下载，支持进度/暂停/取消）
@@ -170,13 +171,37 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .center()
         .decorations(false)
         .shadow(true)
-        .background_color(tauri::window::Color(11, 18, 32, 255)) // 默认深色底：透明标题栏的首帧底色（随主题更新）
+        .transparent(true) // 标题栏区域透出 Mica 云母材质（内容区被子 WebView 盖住不受影响）
         .build()?;
+
+    // 窗口材质（Acrylic 亚克力 / Mica 云母 / 无）：首帧先按设置铺一层，
+    // 内容页主题桥上报后由 push_theme → apply_window_effect 按真实主题刷新。
+    {
+        use tauri::window::{Effect, EffectsBuilder};
+        let material = app
+            .try_state::<Arc<AppState>>()
+            .map(|s| s.settings.lock().unwrap().window_material.to_lowercase())
+            .unwrap_or_else(|| "acrylic".to_string());
+        let effect = match material.as_str() {
+            "none" => None,
+            "mica" => Some(Effect::MicaDark),
+            _ => Some(Effect::Acrylic),
+        };
+        let ok = match effect {
+            Some(e) => window
+                .set_effects(EffectsBuilder::new().effect(e).build())
+                .is_ok(),
+            None => false,
+        };
+        if !ok {
+            let _ = window.set_background_color(Some(tauri::window::Color(11, 18, 32, 255)));
+        }
+    }
 
     // DSH 内容页（标题栏下方整块内容区）：loading.html → 后端就绪后导航到 dsh web
     // 注入：主题桥（事件驱动上报主题）+ 点击转发（点 DSH 内容 = “点外部”，关弹窗）
     let dsh = tauri::WebviewBuilder::new("dsh", WebviewUrl::App("loading.html".into()))
-        .initialization_script(controls::theme_bridge_js())
+        .initialization_script(controls::theme_bridge_js("dsh"))
         .initialization_script(controls::click_forwarder_js())
         .on_download(controls::intercept_download);
     window.add_child(dsh, LogicalPosition::new(0.0, 36.0), LogicalSize::new(1440.0, 864.0))?;
@@ -184,10 +209,13 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     // DeepSeek 内容页：启动即创建（占位页、隐藏），首次切换才导航到 chat.deepseek.com
     // 必须在外壳层之前创建（子 WebView 后创建者在上层，外壳层要保持在最上）
     // UA 覆盖为桌面 Chrome：WebView2 默认 UA 带 "Edg/" 会被 DeepSeek 风控识别为非常规环境
+    // 注入：主题桥（src=deepseek，标题栏跟随 Chat 页配色）+ 点击转发（点内容关弹层，与 dsh 页一致）
     let deepseek = tauri::WebviewBuilder::new("deepseek", WebviewUrl::App("empty.html".into()))
         .user_agent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         )
+        .initialization_script(controls::theme_bridge_js("deepseek"))
+        .initialization_script(controls::click_forwarder_js())
         .on_download(controls::intercept_download);
     let ds_webview = window.add_child(deepseek, LogicalPosition::new(0.0, 36.0), LogicalSize::new(1440.0, 864.0))?;
     let _ = ds_webview.hide();

@@ -35,6 +35,12 @@ pub struct Settings {
     /// 下载开始时是否自动显示下载面板
     #[serde(alias = "show_downloads_on_start")]
     pub show_downloads_on_start: bool,
+    /// 标题栏主题色浓度（0-100）：越低越透、云母材质越明显；越高越贴合内容区配色
+    #[serde(alias = "titlebar_tint")]
+    pub titlebar_tint: u8,
+    /// 窗口材质：acrylic（亚克力，实时模糊下层窗口）/ mica（云母，仅壁纸色底纹）/ none（纯色）
+    #[serde(alias = "window_material")]
+    pub window_material: String,
 }
 
 impl Default for Settings {
@@ -50,6 +56,8 @@ impl Default for Settings {
             download_dir: None,
             ask_download_location: false,
             show_downloads_on_start: true,
+            titlebar_tint: 18,
+            window_material: "acrylic".to_string(),
         }
     }
 }
