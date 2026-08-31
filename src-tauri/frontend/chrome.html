@@ -9,6 +9,8 @@
     --dshd-fg: #e6ecff;
     /* 标题栏主题色浓度：设置面板可调（越低越透、云母材质越明显） */
     --dshd-tint: 18%;
+    /* 弹窗（菜单/下载/设置/环境）背景浓度：独立于标题栏可调 */
+    --dshd-popup-tint: 55%;
   }
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
   body {
@@ -113,7 +115,9 @@
   /* ── 弹层（外壳层内，非独立窗口）── */
   .popup {
     position: fixed; z-index: 20; display: none; box-sizing: border-box;
-    background: color-mix(in srgb, var(--dshd-bg) 94%, white);
+    background: color-mix(in srgb, var(--dshd-bg) var(--dshd-popup-tint, 55%), transparent);
+    backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 12%, transparent);
     box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
     border-radius: 12px;
   }
@@ -288,7 +292,9 @@
   /* 右键菜单（下载管理内） */
   #dl-ctx {
     position: fixed; z-index: 30; display: none; min-width: 180px; padding: 5px;
-    background: color-mix(in srgb, var(--dshd-bg) 96%, white);
+    background: color-mix(in srgb, var(--dshd-bg) var(--dshd-popup-tint, 55%), transparent);
+    backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 12%, transparent);
     border-radius: 10px;
     box-shadow: 0 10px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
   }
@@ -302,6 +308,100 @@
   #dl-ctx .item:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); }
   #dl-ctx .item[danger] { color: #ff7a85; }
   #dl-ctx .sep { height: 1px; background: color-mix(in srgb, var(--dshd-fg) 12%, transparent); margin: 4px 6px; }
+
+  /* ── 环境管理（版本 / Profile） ── */
+  #popup-env { top: 44px; right: 12px; width: 580px; max-width: calc(100vw - 24px); max-height: calc(100vh - 60px); padding: 12px 14px 14px; flex-direction: column; }
+  #popup-env.visible { display: flex; }
+  #popup-env .env-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  #popup-env .env-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  #popup-env .env-head button {
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 8%, transparent);
+    color: color-mix(in srgb, var(--dshd-fg) 88%, transparent); border-radius: 8px;
+    padding: 4px 10px; font: inherit; font-size: 11.5px; cursor: pointer;
+  }
+  #popup-env .env-head button:hover { background: color-mix(in srgb, var(--dshd-fg) 14%, transparent); }
+  #popup-env .env-busy {
+    padding: 6px 10px; margin-bottom: 6px; border-radius: 8px; font-size: 11.5px;
+    color: #93c5fd; border: 1px solid rgba(59,130,246,.35); background: rgba(59,130,246,.10);
+    display: flex; align-items: center; gap: 7px;
+  }
+  #popup-env .env-busy[hidden] { display: none !important; }
+  #popup-env .env-busy .spinner { width: 10px; height: 10px; border-radius: 50%; border: 2px solid rgba(147,197,253,.35); border-top-color: #93c5fd; flex: none; animation: envSpin .8s linear infinite; }
+  @keyframes envSpin { to { transform: rotate(360deg); } }
+  #popup-env .env-msg { min-height: 0; font-size: 11.5px; line-height: 16px; color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); margin: 0 0 6px; }
+  #popup-env .env-msg.err { color: #ff7a85; }
+  #popup-env .env-content { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  #popup-env .env-body { display: flex; gap: 12px; min-height: 0; flex: 1 1 auto; }
+  #popup-env .env-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  #popup-env .env-col-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  #popup-env .env-col-head h4 { margin: 0; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--dshd-fg) 70%, transparent); }
+  #popup-env .env-col-head .env-actions { margin-left: auto; display: flex; gap: 4px; }
+  #popup-env .env-col-head button, #popup-env .env-item .btns button, #popup-env .env-form button {
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 8%, transparent);
+    color: color-mix(in srgb, var(--dshd-fg) 88%, transparent); border-radius: 8px;
+    padding: 4px 9px; font: inherit; font-size: 11.5px; cursor: pointer; transition: background .12s;
+    appearance: none; -webkit-appearance: none; box-sizing: border-box;
+  }
+  #popup-env .env-col-head button:hover, #popup-env .env-item .btns button:hover, #popup-env .env-form button:hover { background: color-mix(in srgb, var(--dshd-fg) 14%, transparent); }
+  #popup-env .env-item .btns .danger, #popup-env .env-form .danger { color: #ff7a85; border-color: rgba(232,17,35,.4); }
+  #popup-env .env-item .btns .danger:hover { background: rgba(232,17,35,.15); }
+  #popup-env .env-form { border: 1px solid color-mix(in srgb, var(--dshd-fg) 14%, transparent); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: color-mix(in srgb, var(--dshd-fg) 4%, transparent); }
+  #popup-env .env-form[hidden] { display: none !important; }
+  #popup-env .env-form .f-row { display: flex; gap: 6px; margin-bottom: 7px; align-items: center; }
+  #popup-env .env-form .f-row label { flex: none; font-size: 11px; color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); width: 58px; }
+  #popup-env .env-form input[type="text"], #popup-env .env-form select {
+    flex: 1; min-width: 0; padding: 4px 7px; border-radius: 7px; font: inherit; font-size: 11.5px; outline: none;
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    background: color-mix(in srgb, var(--dshd-fg) 6%, transparent); color: var(--dshd-fg);
+  }
+  #popup-env .env-form .f-check { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: color-mix(in srgb, var(--dshd-fg) 70%, transparent); margin-bottom: 6px; }
+  #popup-env .env-form .f-check input { width: 14px; height: 14px; accent-color: #3b82f6; margin: 0; }
+  #popup-env .env-form .f-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  #popup-env .env-form .f-actions .primary { background: #16a34a; border-color: transparent; color: #fff; }
+  #popup-env .env-list { overflow-y: auto; min-height: 60px; flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; scrollbar-width: thin; }
+  #popup-env .env-list::-webkit-scrollbar { width: 6px; }
+  #popup-env .env-list::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--dshd-fg) 22%, transparent); border-radius: 3px; }
+  #popup-env .env-list::-webkit-scrollbar-track { background: transparent; }
+  #popup-env .env-empty { font-size: 11.5px; color: color-mix(in srgb, var(--dshd-fg) 40%, transparent); text-align: center; padding: 12px 0; }
+  #popup-env .env-item { border: 1px solid color-mix(in srgb, var(--dshd-fg) 10%, transparent); border-radius: 10px; padding: 8px 10px; background: color-mix(in srgb, var(--dshd-fg) 4%, transparent); }
+  #popup-env .env-item.active { border-color: rgba(34,197,94,.45); background: rgba(34,197,94,.07); }
+  #popup-env .env-item .top { display: flex; align-items: center; gap: 6px; }
+  #popup-env .env-item .name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #popup-env .env-item .tag { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--dshd-fg) 18%, transparent); color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); flex: none; }
+  #popup-env .env-item .tag.ok { color: #22c55e; border-color: rgba(34,197,94,.4); }
+  #popup-env .env-item .meta { font-size: 10.5px; color: color-mix(in srgb, var(--dshd-fg) 42%, transparent); margin: 3px 0 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: Consolas, monospace; }
+  #popup-env .env-item .btns { display: flex; gap: 4px; flex-wrap: wrap; }
+  #popup-env #env-confirm { position: absolute; inset: 0; z-index: 6; border-radius: 12px; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; }
+  #popup-env #env-confirm.visible { display: flex; }
+  #popup-env #env-confirm .card { width: 300px; padding: 14px; border-radius: 10px; background: color-mix(in srgb, var(--dshd-bg) 96%, white); box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+  #popup-env #env-confirm .card h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+  #popup-env #env-confirm .card p { margin: 0 0 12px; font-size: 12px; line-height: 18px; color: color-mix(in srgb, var(--dshd-fg) 60%, transparent); }
+  #popup-env #env-confirm .row { display: flex; gap: 8px; }
+  #popup-env #env-confirm .row button { flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--dshd-fg) 18%, transparent); background: transparent; color: color-mix(in srgb, var(--dshd-fg) 88%, transparent); font: inherit; font-size: 12.5px; cursor: pointer; }
+  #popup-env #env-confirm .row button:hover { background: color-mix(in srgb, var(--dshd-fg) 10%, transparent); }
+  #popup-env #env-confirm .row .dang { background: #e81123; border-color: transparent; color: #fff; }
+  #popup-env #env-confirm .row .dang:hover { background: #c50f1f; }
+  /* 切换环境时：环境管理面板内容整体模糊，中间显示「切换中」 */
+  #popup-env #env-switch-overlay {
+    position: absolute; inset: 0; z-index: 5; display: grid; place-items: center;
+    border-radius: 12px; background: rgba(3,7,16,.42);
+    backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  }
+  #popup-env #env-switch-overlay[hidden] { display: none !important; }
+  #popup-env #env-switch-overlay .env-sw-box {
+    display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 12px;
+    background: color-mix(in srgb, var(--dshd-bg) 92%, white);
+    border: 1px solid color-mix(in srgb, var(--dshd-fg) 16%, transparent);
+    box-shadow: 0 10px 34px rgba(0,0,0,.5);
+    font-size: 12.5px; font-weight: 600; color: var(--dshd-fg);
+  }
+  #popup-env #env-switch-overlay .spinner {
+    width: 16px; height: 16px; border-radius: 50%; flex: none;
+    border: 2px solid rgba(147,197,253,.3); border-top-color: #93c5fd;
+    animation: envSpin .8s linear infinite;
+  }
 </style>
 </head>
 <body>
@@ -309,7 +409,7 @@
   <div class="left">
     <img class="icon" id="icon" alt="" draggable="false" />
     <span class="title">DSH Desktop</span>
-    <span class="badge">v2.3.0</span>
+    <span class="badge">v2.3.10</span>
     <span class="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
   </div>
   <div class="right">
@@ -335,13 +435,14 @@
 
 <div class="popup" id="popup-menu">
   <div class="mh">
-    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.3.0</span></div>
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.3.10</span></div>
     <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
   </div>
   <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
   <button class="item" data-act="reload"><span>重新加载</span><span class="kbd">刷新页面</span></button>
   <button class="item" data-act="toggle-deepseek"><span>切换 DeepSeek 聊天页</span><span class="kbd">DeepSeek</span></button>
   <button class="item" data-act="dl"><span>下载管理</span><span class="kbd">导出文件</span></button>
+  <button class="item" data-act="env"><span>环境管理</span><span class="kbd">版本 · Profile</span></button>
   <button class="item" data-act="dl-settings"><span>设置</span><span class="kbd">外观 · 下载</span></button>
   <div class="sep"></div>
   <button class="item" data-act="browser">在浏览器中打开</button>
@@ -408,7 +509,12 @@
     <input type="range" id="set-tint" min="0" max="100" step="2" />
     <span class="set-hint" id="set-tint-val">18%</span>
   </div>
-  <div class="set-tip">亚克力会实时模糊窗口后面的所有内容（含其它应用）；云母只采样桌面壁纸配色，不透出窗口。透明度数值越小越透，拖动即时预览。</div>
+  <div class="set-row">
+    <label>弹窗透明度</label>
+    <input type="range" id="set-pop-tint" min="0" max="100" step="2" />
+    <span class="set-hint" id="set-pop-tint-val">55%</span>
+  </div>
+  <div class="set-tip">亚克力会实时模糊窗口后面的所有内容（含其它应用）；云母只采样桌面壁纸配色，不透出窗口。透明度数值越小越透，拖动即时预览；弹窗透明度只影响菜单/下载/设置/环境等弹层背景，独立于标题栏。</div>
   <div class="set-group">下载</div>
   <div class="set-row">
     <label>下载保存位置</label>
@@ -425,6 +531,42 @@
   <div class="set-actions">
     <button id="set-cancel">取消</button>
     <button id="set-save" class="primary">保存</button>
+  </div>
+</div>
+
+<div class="popup" id="popup-env">
+  <div class="env-head">
+    <h3>环境管理</h3>
+    <button id="env-close">关闭</button>
+  </div>
+  <div class="env-content">
+    <div class="env-busy" id="env-busy" hidden><span class="spinner"></span><span id="env-busy-text"></span></div>
+    <div class="env-msg" id="env-msg"></div>
+    <div class="env-body">
+      <div class="env-col">
+        <div class="env-col-head"><h4>DSH 版本</h4><div class="env-actions"><button id="env-ver-add">添加</button></div></div>
+        <div class="env-form" id="env-ver-form" hidden></div>
+        <div class="env-list" id="env-ver-list"></div>
+      </div>
+      <div class="env-col">
+        <div class="env-col-head"><h4>Profile</h4><div class="env-actions"><button id="env-prof-add">新建空</button><button id="env-prof-copy">复制</button></div></div>
+        <div class="env-form" id="env-prof-form" hidden></div>
+        <div class="env-list" id="env-prof-list"></div>
+      </div>
+    </div>
+    <div id="env-switch-overlay" hidden>
+      <div class="env-sw-box"><span class="spinner"></span><span id="env-switch-text">正在切换环境…</span></div>
+    </div>
+    <div id="env-confirm">
+      <div class="card">
+        <h4 id="env-confirm-title">确认</h4>
+        <p id="env-confirm-text"></p>
+        <div class="row">
+          <button id="env-confirm-cancel">取消</button>
+          <button id="env-confirm-ok" class="dang">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -456,7 +598,8 @@
     menu: document.getElementById('popup-menu'),
     close: document.getElementById('popup-close'),
     dl: document.getElementById('popup-downloads'),
-    settings: document.getElementById('popup-settings')
+    settings: document.getElementById('popup-settings'),
+    env: document.getElementById('popup-env')
   };
   var CTX = document.getElementById('dl-ctx');
   window.__dshdShowPopup = function (name, on) {
@@ -466,7 +609,10 @@
     if (name === 'dl' && on) { dlSeenEpoch = dlMaxId; dlSaveSeen(); }
     // 面板关闭时复位其内部模态，否则下次打开会糊着一层遮罩/右键菜单
     if (name === 'dl' && !on) { hideDelConfirm(); hideCtx(); }
-    if (name === 'settings' && on) { loadDlSettings(); }
+    // 设置打开时不重新从磁盘加载：保留上次面板里的实时值，避免一打开就被“还原”。
+    // loadDlSettings() 只在页面初始化时执行一次，保存/取消由面板内按钮处理。
+    if (name === 'env' && on) { resetEnvForms(); if (envSwitching) showEnvSwitchOverlay(envSwitching); loadEnv(); }
+    if (name === 'env' && !on) { resetEnvForms(); hideEnvConfirm(); }
   };
 
   // ── 状态 ──
@@ -487,6 +633,8 @@
     dot.className = 'dot ' + cls;
     label.textContent = text;
     if (menuStatus) menuStatus.textContent = text;
+    // 环境管理切换的完成回调（事件驱动，不轮询）
+    if (window.__dshdEnvOnStatus) window.__dshdEnvOnStatus(s);
   };
 
   // ── 标题栏按钮 ──
@@ -522,14 +670,16 @@
     act('toggle-deepseek');
   });
 
-  // 互斥：打开菜单先关下载/设置；反之亦然
+  // 互斥：打开菜单先关下载/设置/环境；反之亦然
   document.getElementById('menu-btn').addEventListener('click', function () {
     if (POPUP.dl.classList.contains('visible')) act('popup-dl');
     if (POPUP.settings.classList.contains('visible')) act('popup-dl-settings');
+    if (POPUP.env.classList.contains('visible')) act('popup-env');
     act('popup-menu');
   });
   dlBtn.addEventListener('click', function () {
     if (POPUP.menu.classList.contains('visible')) act('popup-menu');
+    if (POPUP.env.classList.contains('visible')) act('popup-env');
     act('popup-dl');
   });
   document.getElementById('min-btn').addEventListener('click', function () { act('min'); });
@@ -542,6 +692,7 @@
       var a = it.getAttribute('data-act');
       if (a === 'dl') { act('popup-menu'); act('popup-dl'); return; }
       if (a === 'dl-settings') { act('popup-menu'); act('popup-dl-settings'); return; }
+      if (a === 'env') { act('popup-menu'); act('popup-env'); return; }
       act(a);
       act('popup-menu');
     });
@@ -556,7 +707,7 @@
   var dlList = document.getElementById('dl-list');
   var dlEmpty = document.getElementById('dl-empty');
   var DL_STATE = { downloading: '下载中', paused: '已暂停', done: '已完成', error: '失败' };
-  var dlSeenEpoch = -1, dlMaxId = 0, dlSettings = { dir: '', ask: false, autoShow: true, tint: 18 };
+  var dlSeenEpoch = -1, dlMaxId = 0, dlSettings = { dir: '', ask: false, autoShow: true, tint: 18, popTint: 55 };
   // 已查看标记持久化：重启后不把历史完成项误报为“未查看”
   function dlSaveSeen() { try { localStorage.setItem('dlSeenEpoch', String(dlSeenEpoch)); } catch (e) {} }
   try { var _se = parseInt(localStorage.getItem('dlSeenEpoch') || '-1', 10); if (!isNaN(_se)) dlSeenEpoch = _se; } catch (e) {}
@@ -819,15 +970,22 @@
     if (e.key === 'Escape') hideCtx();
   });
 
-  // 设置：外观（标题栏透明度）+ 下载
+  // 设置：外观（标题栏透明度 + 弹窗透明度）+ 下载
   var setTint = document.getElementById('set-tint');
   var setTintVal = document.getElementById('set-tint-val');
+  var setPopTint = document.getElementById('set-pop-tint');
+  var setPopTintVal = document.getElementById('set-pop-tint-val');
   function applyTint(v) {
     document.documentElement.style.setProperty('--dshd-tint', v + '%');
     if (setTintVal) setTintVal.textContent = v + '%';
   }
+  function applyPopTint(v) {
+    document.documentElement.style.setProperty('--dshd-popup-tint', v + '%');
+    if (setPopTintVal) setPopTintVal.textContent = v + '%';
+  }
   // 拖动实时预览（不落盘，保存后才持久化）
   setTint.addEventListener('input', function () { applyTint(Number(setTint.value)); });
+  setPopTint.addEventListener('input', function () { applyPopTint(Number(setPopTint.value)); });
   document.getElementById('dl-gear').addEventListener('click', function () {
     act('popup-dl'); // 关掉下载面板
     act('popup-dl-settings');
@@ -838,6 +996,8 @@
   document.getElementById('set-cancel').addEventListener('click', function () {
     applyTint(dlSettings.tint);
     setTint.value = dlSettings.tint;
+    applyPopTint(dlSettings.popTint);
+    setPopTint.value = dlSettings.popTint;
     act('popup-dl-settings');
   });
   document.getElementById('set-save').addEventListener('click', function () {
@@ -845,12 +1005,14 @@
     var ask = document.getElementById('set-ask').checked ? 1 : 0;
     var auto = document.getElementById('set-auto').checked ? 1 : 0;
     var tint = Number(setTint.value);
+    var popTint = Number(setPopTint.value);
     var material = document.getElementById('set-material').value;
     // 立即回写本地状态（避免继续用旧值误触发自动弹出），再请求持久化
     dlSettings.autoShow = auto === 1;
     dlSettings.tint = tint;
+    dlSettings.popTint = popTint;
     dlSettings.material = material;
-    fetch(HTTP + '/dl-set?k=' + K + '&dir=' + encodeURIComponent(dir) + '&ask=' + ask + '&auto=' + auto + '&tint=' + tint + '&material=' + material)
+    fetch(HTTP + '/dl-set?k=' + K + '&dir=' + encodeURIComponent(dir) + '&ask=' + ask + '&auto=' + auto + '&tint=' + tint + '&popTint=' + popTint + '&material=' + material)
       .catch(function () {});
     act('popup-dl-settings');
   });
@@ -858,17 +1020,310 @@
     fetch(HTTP + '/dl-settings').then(function (r) { return r.json(); }).then(function (s) {
       if (!s) return;
       var tint = (typeof s.tint === 'number') ? s.tint : 18;
+      var popTint = (typeof s.popTint === 'number') ? s.popTint : 55;
       var material = s.material || 'acrylic';
-      dlSettings = { dir: s.dir || '', ask: !!s.ask, autoShow: !!s.autoShow, tint: tint, material: material };
+      dlSettings = { dir: s.dir || '', ask: !!s.ask, autoShow: !!s.autoShow, tint: tint, popTint: popTint, material: material };
       document.getElementById('set-dir').value = s.dir || '';
       document.getElementById('set-ask').checked = !!s.ask;
       document.getElementById('set-auto').checked = !!s.autoShow;
       document.getElementById('set-material').value = material;
       setTint.value = tint;
       applyTint(tint);
+      setPopTint.value = popTint;
+      applyPopTint(popTint);
     }).catch(function () {});
   }
   loadDlSettings();
+
+  // ── 环境管理（dsh 版本 / Profile） ──
+  var envData = null;
+  var envEdit = null; // {type:'version'|'profile', mode, id?/old?}
+  var envConfirmFn = null;
+  var envLastErrorShown = null;
+  var envSwitching = null;
+  var envMsgEl = document.getElementById('env-msg');
+  // 切换环境：全屏模糊 loading 由 Rust 注入到 DSH 内容 WebView；
+  // 环境管理面板内容整体模糊 + 中间「切换中」，由 backend-status 事件驱动收起，不用轮询。
+  function showEnvSwitchOverlay(detail) {
+    var ov = document.getElementById('env-switch-overlay');
+    if (ov) {
+      ov.hidden = false;
+      var t = document.getElementById('env-switch-text');
+      if (t) t.textContent = '正在切换 ' + detail + '…';
+    }
+  }
+  function hideEnvSwitchOverlay() {
+    var ov = document.getElementById('env-switch-overlay');
+    if (ov) ov.hidden = true;
+  }
+  function beginEnvSwitch(detail) {
+    envSwitching = detail;
+    showEnvSwitchOverlay(detail);
+  }
+  function finishEnvSwitch() {
+    envSwitching = null;
+    hideEnvSwitchOverlay();
+    loadEnv();
+  }
+  window.__dshdEnvOnStatus = function (s) {
+    if (!envSwitching) return;
+    if (s.state === 'running' || s.state === 'external' || s.state === 'error' || s.state === 'stopped') {
+      finishEnvSwitch();
+    }
+  };
+  function envMsg(text, err) {
+    if (!envMsgEl) return;
+    envMsgEl.textContent = text || '';
+    envMsgEl.classList.toggle('err', !!err);
+  }
+  function envAct(a, q) {
+    return fetch(HTTP + '/action?name=' + encodeURIComponent(a) + '&k=' + K + (q ? '&' + q : ''))
+      .then(function (r) { return r.json(); })
+      .then(function (v) {
+        if (v && v.ok === false && v.error) envMsg(v.error, true);
+        return v;
+      })
+      .catch(function () { envMsg('请求失败，请稍后再试', true); return { ok: false }; });
+  }
+  function findVersion(id) {
+    return (envData && envData.versions || []).find(function (v) { return v.id === id; }) || null;
+  }
+  function findProfile(name) {
+    return (envData && envData.profiles || []).find(function (p) { return p.name === name; }) || null;
+  }
+  function resetEnvForms() {
+    envEdit = null;
+    document.getElementById('env-ver-form').hidden = true;
+    document.getElementById('env-prof-form').hidden = true;
+    envMsg('');
+  }
+  function hideEnvConfirm() {
+    document.getElementById('env-confirm').classList.remove('visible');
+    envConfirmFn = null;
+  }
+  function envConfirm(title, text, fn) {
+    document.getElementById('env-confirm-title').textContent = title;
+    document.getElementById('env-confirm-text').textContent = text;
+    envConfirmFn = fn;
+    document.getElementById('env-confirm').classList.add('visible');
+  }
+  document.getElementById('env-confirm-cancel').addEventListener('click', hideEnvConfirm);
+  document.getElementById('env-confirm-ok').addEventListener('click', function () {
+    var fn = envConfirmFn; envConfirmFn = null;
+    hideEnvConfirm();
+    if (fn) fn();
+  });
+
+  function renderEnv() {
+    if (!envData) return;
+    var busy = envData.busy;
+    var busyEl = document.getElementById('env-busy');
+    if (busy) {
+      busyEl.hidden = false;
+      document.getElementById('env-busy-text').textContent = (busy.detail || busy.phase || '处理中…');
+    } else {
+      busyEl.hidden = true;
+    }
+    if (!busy && envData.last_error && envData.last_error !== envLastErrorShown) {
+      envMsg(envData.last_error, true);
+      envLastErrorShown = envData.last_error;
+    } else if (!busy && !envData.last_error) {
+      envLastErrorShown = null;
+    }
+    renderVersionList();
+    renderProfileList();
+  }
+  function renderVersionList() {
+    var list = document.getElementById('env-ver-list');
+    var arr = envData.versions || [];
+    if (!arr.length) {
+      list.innerHTML = '<div class="env-empty">暂无版本，点击「添加」安装一个独立版本</div>';
+      return;
+    }
+    list.innerHTML = arr.map(function (v) {
+      var badge = v.active ? '<span class="tag ok">使用中</span>' : (v.exists ? '' : '<span class="tag">缺失</span>');
+      var srcTag = v.source === 'managed' ? '<span class="tag">受管</span>' : (v.source === 'global' ? '<span class="tag">全局</span>' : '<span class="tag">手动</span>');
+      var meta = (v.installed ? ('dsh ' + v.installed) : (v.spec || 'manual')) + ' · ' + (v.dir || '');
+      var btns = '';
+      if (!v.active && v.exists && v.source !== 'manual') btns += '<button data-v="use" data-id="' + esc(v.id) + '">使用</button>';
+      // 当前使用中的版本不允许再操作（避免误点删掉正在跑的版本）
+      if (v.source === 'managed' && !v.active) {
+        if (!v.exists) {
+          btns += '<button data-v="update" data-id="' + esc(v.id) + '">重装</button>';
+        } else {
+          btns += '<button data-v="update" data-id="' + esc(v.id) + '">更新</button>';
+          btns += '<button data-v="rename" data-id="' + esc(v.id) + '">重命名</button>';
+          btns += '<button data-v="remove" data-id="' + esc(v.id) + '" class="danger">删除</button>';
+        }
+      }
+      return '<div class="env-item' + (v.active ? ' active' : '') + '">' +
+        '<div class="top"><span class="name" title="' + esc(v.label) + '">' + esc(v.label) + '</span>' + srcTag + badge + '</div>' +
+        '<div class="meta" title="' + esc(meta) + '">' + esc(meta) + '</div>' +
+        (btns ? '<div class="btns">' + btns + '</div>' : '') +
+        '</div>';
+    }).join('');
+    list.querySelectorAll('[data-v]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-id');
+        var op = b.getAttribute('data-v');
+        var v = findVersion(id);
+        if (op === 'use') {
+          // 先显示面板切换中（立即响应，不等 HTTP 回来），再发送切换请求
+          beginEnvSwitch('版本「' + (v ? v.label : id) + '」');
+          envAct('env-version-use', 'id=' + encodeURIComponent(id) + '&label=' + encodeURIComponent(v ? v.label : '')).then(function (rv) {
+            if (rv && rv.ok === false) finishEnvSwitch();
+          });
+        } else if (op === 'rename') {
+          showVerForm('rename', v);
+        } else if (op === 'update') {
+          showVerForm('update', v);
+        } else if (op === 'remove') {
+          envConfirm('删除版本', '确定删除「' + (v ? v.label : id) + '」？对应安装目录也会一并删除。', function () {
+            envAct('env-version-remove', 'id=' + encodeURIComponent(id)).then(function () { loadEnv(); });
+          });
+        }
+      });
+    });
+  }
+  function renderProfileList() {
+    var list = document.getElementById('env-prof-list');
+    var arr = envData.profiles || [];
+    if (!arr.length) {
+      list.innerHTML = '<div class="env-empty">暂无 profile，可新建空环境或复制现有环境</div>';
+      return;
+    }
+    list.innerHTML = arr.map(function (p) {
+      var badge = p.active ? '<span class="tag ok">使用中</span>' : '';
+      var ready = p.web_ready ? '<span class="tag">web</span>' : '';
+      var meta = p.dir + ' · ' + p.bundles + ' bundles · ' + p.plugins + ' 插件';
+      var btns = '';
+      // 当前使用中的 profile 不允许再操作（避免误切/误删）
+      if (!p.active) {
+        btns = '<button data-p="use" data-name="' + esc(p.name) + '">使用</button>' +
+          '<button data-p="rename" data-name="' + esc(p.name) + '">重命名</button>' +
+          '<button data-p="remove" data-name="' + esc(p.name) + '" class="danger">删除</button>';
+      }
+      return '<div class="env-item' + (p.active ? ' active' : '') + '">' +
+        '<div class="top"><span class="name" title="' + esc(p.name) + '">' + esc(p.name) + '</span>' + ready + badge + '</div>' +
+        '<div class="meta" title="' + esc(meta) + '">' + esc(meta) + '</div>' +
+        '<div class="btns">' + btns + '</div>' +
+        '</div>';
+    }).join('');
+    list.querySelectorAll('[data-p]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var name = b.getAttribute('data-name');
+        var op = b.getAttribute('data-p');
+        var p = findProfile(name);
+        if (op === 'use') {
+          // 先显示面板切换中（立即响应，不等 HTTP 回来），再发送切换请求
+          beginEnvSwitch('Profile「' + name + '」');
+          envAct('env-profile-use', 'p=' + encodeURIComponent(name)).then(function (rv) {
+            if (rv && rv.ok === false) finishEnvSwitch();
+          });
+        } else if (op === 'rename') {
+          showProfForm('rename', p);
+        } else if (op === 'remove') {
+          envConfirm('删除 profile', '确定删除「' + name + '」？当前使用中的 profile 不能删除。', function () {
+            envAct('env-profile-remove', 'p=' + encodeURIComponent(name)).then(function () { loadEnv(); });
+          });
+        }
+      });
+    });
+  }
+  function showVerForm(mode, v) {
+    envEdit = { type: 'version', mode: mode, id: v ? v.id : null };
+    var form = document.getElementById('env-ver-form');
+    var labelVal = v ? v.label : '';
+    var specVal = (v && v.spec && v.spec !== 'manual') ? v.spec : '';
+    var html = '';
+    if (mode === 'rename') {
+      html = '<div class="f-row"><label>备注</label><input type="text" id="env-ver-label" value="' + esc(labelVal) + '" placeholder="版本备注名" /></div>';
+    } else {
+      html = '<div class="f-row"><label>版本</label><input type="text" id="env-ver-spec" value="' + esc(specVal) + '" placeholder="latest 或 0.1.2-alpha.2" /></div>' +
+        '<div class="f-row"><label>备注</label><input type="text" id="env-ver-label" value="' + esc(labelVal) + '" placeholder="可选备注名" /></div>';
+    }
+    html += '<div class="f-actions"><button id="env-ver-cancel">取消</button><button id="env-ver-ok" class="primary">' +
+      (mode === 'update' ? '开始更新' : (mode === 'rename' ? '保存' : '开始安装')) + '</button></div>';
+    form.innerHTML = html;
+    form.hidden = false;
+    document.getElementById('env-ver-cancel').addEventListener('click', resetEnvForms);
+    document.getElementById('env-ver-ok').addEventListener('click', function () {
+      var label = (document.getElementById('env-ver-label') || {}).value || '';
+      var spec = (document.getElementById('env-ver-spec') || {}).value || '';
+      if (mode === 'add') {
+        if (!spec.trim()) { envMsg('请填写版本号', true); return; }
+        envAct('env-version-add', 'spec=' + encodeURIComponent(spec.trim()) + '&label=' + encodeURIComponent(label.trim()))
+          .then(function () { resetEnvForms(); setTimeout(loadEnv, 400); });
+      } else if (mode === 'update') {
+        envAct('env-version-update', 'id=' + encodeURIComponent(v.id) + '&spec=' + encodeURIComponent(spec.trim()) + '&label=' + encodeURIComponent(label.trim()))
+          .then(function () { resetEnvForms(); setTimeout(loadEnv, 400); });
+      } else if (mode === 'rename') {
+        if (!label.trim()) { envMsg('备注名不能为空', true); return; }
+        envAct('env-version-rename', 'id=' + encodeURIComponent(v.id) + '&label=' + encodeURIComponent(label.trim()))
+          .then(function () { resetEnvForms(); loadEnv(); });
+      }
+    });
+    var first = form.querySelector('input');
+    if (first) first.focus();
+  }
+  function showProfForm(mode, p) {
+    envEdit = { type: 'profile', mode: mode, old: p ? p.name : null };
+    var form = document.getElementById('env-prof-form');
+    var html = '';
+    if (mode === 'copy') {
+      var opts = (envData.profiles || []).map(function (x) {
+        var sel = (p && p.name === x.name) ? ' selected' : '';
+        return '<option value="' + esc(x.name) + '"' + sel + '>' + esc(x.name) + '</option>';
+      }).join('');
+      html = '<div class="f-row"><label>源</label><select id="env-prof-src">' + opts + '</select></div>' +
+        '<div class="f-row"><label>名称</label><input type="text" id="env-prof-name" placeholder="新 profile 名称" /></div>' +
+        '<div class="f-check"><input type="checkbox" id="env-prof-modules" checked /> 同时复制 node_modules（复制后立即可用，体积较大）</div>';
+    } else {
+      html = '<div class="f-row"><label>名称</label><input type="text" id="env-prof-name" value="' + (p ? esc(p.name) : '') + '" placeholder="profile 名称（字母数字-_）" /></div>';
+    }
+    html += '<div class="f-actions"><button id="env-prof-cancel">取消</button><button id="env-prof-ok" class="primary">' +
+      (mode === 'copy' ? '开始复制' : (mode === 'rename' ? '保存' : '创建')) + '</button></div>';
+    form.innerHTML = html;
+    form.hidden = false;
+    document.getElementById('env-prof-cancel').addEventListener('click', resetEnvForms);
+    document.getElementById('env-prof-ok').addEventListener('click', function () {
+      var name = (document.getElementById('env-prof-name') || {}).value || '';
+      if (!name.trim()) { envMsg('请填写 profile 名称', true); return; }
+      if (mode === 'new') {
+        envAct('env-profile-add-empty', 'p=' + encodeURIComponent(name.trim())).then(function () { resetEnvForms(); loadEnv(); });
+      } else if (mode === 'copy') {
+        var src = (document.getElementById('env-prof-src') || {}).value || '';
+        var modules = document.getElementById('env-prof-modules') && document.getElementById('env-prof-modules').checked ? '1' : '0';
+        envAct('env-profile-copy', 'p=' + encodeURIComponent(name.trim()) + '&src=' + encodeURIComponent(src) + '&modules=' + modules)
+          .then(function () { resetEnvForms(); loadEnv(); });
+      } else if (mode === 'rename') {
+        envAct('env-profile-rename', 'old=' + encodeURIComponent(p.name) + '&p=' + encodeURIComponent(name.trim()))
+          .then(function () { resetEnvForms(); loadEnv(); });
+      }
+    });
+    var first = form.querySelector('input,select');
+    if (first) first.focus();
+  }
+  function loadEnv() {
+    return fetch(HTTP + '/env')
+      .then(function (r) { return r.json(); })
+      .then(function (d) { envData = d; renderEnv(); return d; })
+      .catch(function () { envMsg('加载环境列表失败', true); return null; });
+  }
+  window.__dshdEnvChanged = function () {
+    if (POPUP.env.classList.contains('visible')) loadEnv();
+  };
+  document.getElementById('env-close').addEventListener('click', function () { act('popup-env-hide'); });
+  document.getElementById('env-ver-add').addEventListener('click', function () { envEdit = null; showVerForm('add', null); });
+  document.getElementById('env-prof-add').addEventListener('click', function () { showProfForm('new', null); });
+  document.getElementById('env-prof-copy').addEventListener('click', function () {
+    var profs = (envData && envData.profiles) || [];
+    if (!profs.length) { envMsg('没有可复制的 profile', true); return; }
+    var active = envData && findProfile(envData.activeProfile);
+    showProfForm('copy', active || profs[0] || null);
+  });
+  // 环境面板数据全部由事件驱动刷新：__dshdEnvChanged（Rust 推送）+ 切换完成回调，
+  // 不再使用轮询。
 
   // ── 下载轮询：列表 + 徽标 + 自动弹出 + 询问保存位置 ──
   var dlRingG = document.querySelector('#dl-btn .ring');
@@ -1008,9 +1463,8 @@
         if (dlDirty) pollDl(); // 刷新期间又有变更 → 补一次
       });
   }
-  // Rust 状态变更推送：立即刷新（徽标/面板零延迟响应）；1s 轮询仅作兜底
+  // Rust 状态变更推送：立即刷新（徽标/面板零延迟响应）；不再使用轮询
   window.__dshdDlChanged = function () { pollDl(); };
-  setInterval(pollDl, 1000);
   pollDl();
 
   // ── 拖动：标题栏空白处 ──

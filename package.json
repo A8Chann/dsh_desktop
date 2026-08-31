@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "2.3.0",
+  "version": "2.3.10",
   "description": "DeepSeek Harness 桌面端（Tauri 版）：自绘标题栏内嵌 dsh web，自动拉起后端",
   "author": "A8Chann@github",
   "license": "MIT",

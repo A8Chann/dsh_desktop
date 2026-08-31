@@ -6,6 +6,7 @@
 mod backend;
 mod controls;
 mod downloads;
+mod environments;
 mod settings;
 mod util;
 #[cfg(windows)]
@@ -68,7 +69,11 @@ fn main() {
         _ => {}
     })
     .setup(|app| {
-        let settings = Arc::new(Mutex::new(settings::load_settings()));
+        // 启动时把当前 dsh（手动路径/全局）登记进环境管理，保证面板有记录
+        let mut loaded = settings::load_settings();
+        crate::environments::ensure_seed_versions(&mut loaded);
+        crate::settings::save_settings(&loaded);
+        let settings = Arc::new(Mutex::new(loaded));
         let log = Arc::new(util::Logger::new(settings::logs_dir().join("main.log")));
         log.info(format!("==== DSH Desktop (Tauri) 启动：{} ====", env!("CARGO_PKG_VERSION")).as_str());
         log.info(format!("settings: {:?}", settings.lock().unwrap()).as_str());
@@ -84,6 +89,9 @@ fn main() {
             popup_close_visible: AtomicBool::new(false),
             popup_downloads_visible: AtomicBool::new(false),
             popup_settings_visible: AtomicBool::new(false),
+            popup_env_visible: AtomicBool::new(false),
+            env_task: Mutex::new(None),
+            env_last_error: Mutex::new(None),
             last_popup_shown_ms: AtomicU64::new(0),
             deepseek_loaded: AtomicBool::new(false),
             theme_dsh: Mutex::new(None),
@@ -239,6 +247,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .initialization_script(token_script.clone())
         .initialization_script(controls::theme_bridge_js("dsh"))
         .initialization_script(controls::click_forwarder_js(&token))
+        .initialization_script(controls::switch_loading_js())
         .on_download(controls::intercept_download);
     window.add_child(dsh, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
 

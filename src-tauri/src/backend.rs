@@ -103,11 +103,17 @@ impl Backend {
         let s = self.status.lock().unwrap().clone();
         let _ = self.app.emit("backend-status", &s);
         let _ = self.app.emit("backend-status-lite", &s.state);
-        // 同步推送到主窗页面（右上角菜单直接读全局函数），JSON 安全嵌入 JS
+        // 同步推送到主窗页面与外壳层（右上角菜单/环境面板直接读全局函数），JSON 安全嵌入 JS
         if let Ok(json) = serde_json::to_string(&s) {
+            let js = format!("window.__dshdStatus && window.__dshdStatus({});", json);
             if let Some(win) = self.app.get_webview_window("main") {
-                let js = format!("window.__dshdStatus && window.__dshdStatus({});", json);
                 let _ = win.eval(&js);
+            }
+            if let Some(c) = self.app.get_webview("chrome") {
+                let _ = c.eval(&js);
+            }
+            if let Some(d) = self.app.get_webview("dsh") {
+                let _ = d.eval(&js);
             }
         }
     }
@@ -170,12 +176,20 @@ impl Backend {
                     None => continue,
                 };
                 if (st.state == "running" || st.state == "external") && st.url.is_some() {
-                    if let Some(w) = app.get_webview_window("main") {
+                    // 刷新 DSH 内容 WebView（不是主窗；子 WebView 用 get_webview("dsh")）
+                    if let Some(w) = app.get_webview("dsh") {
                         let _ = w.eval("location.reload()");
                     }
+                    crate::controls::hide_switch_loading(&app);
                     return;
                 }
+                if st.state == "error" || st.state == "stopped" {
+                    // 失败态立即收掉切换遮罩（自动重试继续在后台进行）
+                    crate::controls::hide_switch_loading(&app);
+                }
             }
+            // 超时/失败兜底：收起切换 loading，避免遮住界面
+            crate::controls::hide_switch_loading(&app);
         });
     }
 
@@ -267,14 +281,20 @@ fn profile_display(settings: &Mutex<Settings>) -> String {
     )
 }
 
-/// 统一状态发布：写回共享状态 + emit 事件 + 推送主窗右上角菜单。
+/// 统一状态发布：写回共享状态 + emit 事件 + 推送主窗与外壳层。
 fn publish(app: &AppHandle, status: &Arc<Mutex<BackendStatus>>, st: BackendStatus) {
     *status.lock().unwrap() = st.clone();
     let _ = app.emit("backend-status", &st);
     if let Ok(json) = serde_json::to_string(&st) {
+        let js = format!("window.__dshdStatus && window.__dshdStatus({});", json);
         if let Some(win) = app.get_webview_window("main") {
-            let js = format!("window.__dshdStatus && window.__dshdStatus({});", json);
             let _ = win.eval(&js);
+        }
+        if let Some(c) = app.get_webview("chrome") {
+            let _ = c.eval(&js);
+        }
+        if let Some(d) = app.get_webview("dsh") {
+            let _ = d.eval(&js);
         }
     }
 }
@@ -298,33 +318,54 @@ fn spawn_own(
     let dsh_bin = match dsh_bin {
         Some(b) => b,
         None => {
-            // 未找到 dsh：默认安装（测速选最快源 + npm 安装）。
-            // 这一步耗时可达 1~2 分钟，必须持续上报 install 进度，
-            // 否则启动页只有一行静态文字，看起来像卡死。
-            let report = |phase: &str, detail: &str, fetched: u32| {
-                let st = BackendStatus {
-                    state: "starting".to_string(),
-                    install: Some(InstallState {
-                        phase: phase.to_string(),
-                        detail: detail.to_string(),
-                        fetched,
-                    }),
-                    ..BackendStatus::new("starting")
-                };
-                publish(&app, &status, st);
-            };
-            match default_install_dsh(&node_bin, &log, &report) {
-                Ok(bin) => {
-                    {
+            // 已有登记版本且存在：直接用（无需重新下载）
+            if let Some(v) = crate::environments::find_available_version(&settings) {
+                match v.bin {
+                    Some(bin) if std::path::Path::new(&bin).exists() => {
                         let mut s = settings.lock().unwrap();
                         s.dsh_bin = Some(bin.clone());
+                        s.active_version_id = Some(v.id.clone());
                         save_settings(&s);
+                        bin
                     }
-                    bin
+                    _ => {
+                        fail(app, status, &stop, "已登记的 dsh 版本不存在（目录可能被移动或删除）");
+                        return;
+                    }
                 }
-                Err(e) => {
-                    fail(app, status, &stop, &format!("默认安装 dsh 失败: {}", e));
-                    return;
+            } else {
+                // 没有任何版本：安装一个「桌面端管理」的最新版到独立目录。
+                // 这一步耗时可达 1~2 分钟，必须持续上报 install 进度，
+                // 否则启动页只有一行静态文字，看起来像卡死。
+                let report = |phase: &str, detail: &str, fetched: u32| {
+                    let st = BackendStatus {
+                        state: "starting".to_string(),
+                        install: Some(InstallState {
+                            phase: phase.to_string(),
+                            detail: detail.to_string(),
+                            fetched,
+                        }),
+                        ..BackendStatus::new("starting")
+                    };
+                    publish(&app, &status, st);
+                };
+                match crate::environments::add_version(
+                    &settings, &log, None, "latest", &report,
+                ) {
+                    Ok(v) => {
+                        let bin = v.bin.clone().unwrap_or_default();
+                        {
+                            let mut s = settings.lock().unwrap();
+                            s.dsh_bin = Some(bin.clone());
+                            s.active_version_id = Some(v.id.clone());
+                            save_settings(&s);
+                        }
+                        bin
+                    }
+                    Err(e) => {
+                        fail(app, status, &stop, &format!("安装 dsh 失败: {}", e));
+                        return;
+                    }
                 }
             }
         }
@@ -349,14 +390,21 @@ fn spawn_own(
 
     let port = settings.lock().unwrap().port;
     let workspace = settings.lock().unwrap().workspace.clone().unwrap_or_default();
+    let profile = settings.lock().unwrap().profile.clone();
 
-    // 3) 拉起
+    // 3) 拉起。注意：`web` 是 `--profile web` 的别名，不能与 `--profile <name>` 混用
+    // （`dsh --profile x web ...` 会被 Commander 拒绝）；自定义 profile 直接传 web 的
+    // 自身参数：`dsh --profile <name> --no-open --port <port>`。
     log.info(&format!(
-        "[backend] 尝试启动：node={} dsh={} args=web --no-open --port={} cwd={}",
-        node_bin, dsh_bin, port, workspace
+        "[backend] 尝试启动：node={} dsh={} --profile={} args=--no-open --port={} cwd={}",
+        node_bin, dsh_bin, profile, port, workspace
     ));
     let mut child = match Command::new(&node_bin)
-        .args([&dsh_bin, "web", "--no-open", "--port", &port.to_string()])
+        .arg(&dsh_bin)
+        .arg("--profile")
+        .arg(&profile)
+        .args(["--no-open", "--port"])
+        .arg(port.to_string())
         .current_dir(&workspace)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -714,7 +762,9 @@ fn resolve_dsh(explicit: Option<&str>) -> Option<String> {
 }
 
 // ─────────────────────────── 默认安装（测速选最快源 + npm 全局安装） ───────────────────────────
+// 保留旧实现供对照；新的安装路径统一走 environments.rs 的独立目录安装。
 
+#[allow(dead_code)]
 const REGISTRY_CANDIDATES: [(&str, &str); 4] = [
     ("npmmirror（国内）", "https://registry.npmmirror.com/"),
     ("npmjs（官方）", "https://registry.npmjs.org/"),
@@ -722,6 +772,7 @@ const REGISTRY_CANDIDATES: [(&str, &str); 4] = [
     ("华为云镜像", "https://repo.huaweicloud.com/repository/npm/"),
 ];
 
+#[allow(dead_code)]
 fn registry_latency(url: &str) -> Option<u64> {
     use std::net::{TcpStream, ToSocketAddrs};
     let host_port = url
@@ -745,6 +796,7 @@ fn registry_latency(url: &str) -> Option<u64> {
 
 /// 默认安装 dsh：测速选最快 npm 源 → `npm install -g @deepseek-ai/dsh@latest` → 定位 bin.js。
 /// `report(phase, detail, fetched)` 在每个阶段回调，用于把进度推到启动页（否则这 1~2 分钟毫无反馈）。
+#[allow(dead_code)]
 fn default_install_dsh(
     node_bin: &str,
     log: &Arc<Logger>,

@@ -607,6 +607,11 @@ fn run_download(
                     task.speed = v;
                 }
             }
+            drop(t);
+            // 进度事件驱动：每 500ms 推送一次外壳层刷新（不再依赖前端轮询）
+            if report_speed {
+                me.fire();
+            }
         }
 
         if !paused_out {

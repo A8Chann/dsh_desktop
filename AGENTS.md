@@ -42,13 +42,26 @@ WebView2 页面无法直接调 Tauri API（生产模式），统一走 HTTP 控�
 - 退避 sleep 按 **1 秒切片**并每片检查 `stop`，保证重启/退出能及时打断（最长 30s 的整段 sleep 会让 join 卡住）。
 - 状态机：idle / starting / running / external / error / restarting / stopped，经 `backend-status` 事件 + `win.eval` 推送到注入标题栏。
 
+## 环境管理（environments.rs，2026-08-31 新增）
+
+- 入口：⋯ 菜单「环境管理」→ 外壳层 `popup-env` 弹层（版本 + Profile 双列）。Rust 侧通过 `GET /env`（只读）与 `/action?name=env-*`（需令牌）交互；长耗时安装/更新走后台任务，`AppState.env_task` 存进度，`window.__dshdEnvChanged` 通知面板刷新。
+- **环境管理不使用前端轮询**：面板打开时拉一次 `/env`，之后全部由事件驱动——安装进度/结果用 `__dshdEnvChanged`，切换完成用 `backend-status`（Rust `emit`/`publish` 会同步 eval 到 chrome WebView）。不要加 `setInterval` 轮询。
+- **切换环境的全屏 Loading 是注入到 DSH 内容 WebView**（`controls.rs::switch_loading_js` / `switch_loading`），只覆盖内容 WebView 区域、不盖标题栏；面板内另一条「切换中」横幅，后端 `running/external/error/stopped` 状态事件到达后自动收起，《不要》用整窗外壳层弹层做切换遮罩。
+- **版本**：每个受管版本安装到 `%APPDATA%\DSH Desktop\versions\<id>\`（`npm install --prefix <dir> @deepseek-ai/dsh@<spec>`），切换只改 `settings.dsh_bin`，**不影响当前正在运行的实例**（下次重启/切换才生效）；全局安装与手动路径只展示/使用，不能由桌面端删除或更新。
+- **Profile**：以 `$DSH_HOME/profiles/<name>` 目录为准扫描（读 package.json 的 `dsh.profile.bundles`/dependencies）。新建=创建 `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app` 的空模板（立即可启动）；复制可带 node_modules（完整现场改造/修复），复制时修正 manifest 的 `name`。
+- **⚠️ `/action?name=...` 的其它参数不能叫 `name`**：HTTP 查询解析后 `HashMap` 里 `name` 会被动作名占用，再传 `name=profile名` 会覆盖动作名，导致动作被当成未知 action 直接失效。环境管理的 profile 参数统一用 `p`（`env-profile-use&p=web` 等）；版本用 `id`/`spec`/`label`，没有冲突。
+- **当前使用中的版本/Profile 不再显示 使用/重命名/删除 按钮**，Rust 侧同样拒绝（防误操作）。
+- **启动命令必须是 `node <bin.js> --profile <name> --no-open --port <port>`**：`web` 只是 `--profile web` 的**别名**，不能与 `--profile <name>` 混用（`dsh --profile x web ...` 会被 Commander 拒绝）；自定义 profile 直接传 web 自身参数即可。`controls.rs::run_install_plugin` 使用 `dsh plugin --profile <name> ...` 的形式（子命令前无 parent `--profile`），同样按当前 settings.profile，不再硬编码 web。
+- 首次启动若没有任何版本，后端会改为安装一个「桌面端管理」版本（不再 npm -g）；启动时 `environments::ensure_seed_versions` 会把当前 dsh（全局/手动）登记进列表。
+- 插件变更监控随 profile 切换自动重新 watch（每循环读取 settings.profile，变化即重建 watcher）。
+
 ## 下载支持（自管下载器 downloads.rs）
 
 - **不要用 WebView2 原生下载**：tauri 的 `DownloadEvent` 只有 Requested/Finished，**没有进度、没有暂停/取消控制**；且实测 WebView2 原生下载链路会崩溃（0xc0000409，崩溃偏移固定，无 [download] 日志）。
 - 方案：`on_download` 拦截请求（解析文件名后**返回 `false` 阻止 WebView2**），交给 `downloads.rs` 用 **ureq 流式下载**到系统下载目录，维护进度/暂停/继续/取消（每块检查 AtomicBool 标志），并经 HTTP 控制服务暴露：
   - `GET /downloads` → 任务列表 JSON（id/name/url/file/state/bytes/total/error）
   - `action download-cancel?id=` / `download-pause?id=&on=0|1` / `download-open?id=`（explorer /select）/ `download-delete?id=`（删文件+移记录）/ `download-retry?id=` / `download-browser?id=`（转交系统浏览器并自动取消自管下载，避免重复）
-- 注入 JS 提供「下载管理」**右上角下拉卡片**（类 Edge 下载浮层；⋯ 菜单入口 / `__dshdShowDownloads()`）：列表 + 进度条 + 按钮矩阵（下载中=暂停/用浏览器下载/取消；已暂停=继续/取消；完成=打开文件夹/删除；失败/取消=重试/用浏览器下载/删除），800ms 轮询，点击外部/ESC 关闭；样式沿用弹窗经验：独立 id CSS + `[hidden]{display:none!important}`（下拉用 `position:fixed;top:44px;right:12px`，无遮罩）。
+- 注入 JS 提供「下载管理」**右上角下拉卡片**（类 Edge 下载浮层；⋯ 菜单入口 / `__dshdShowDownloads()`）：列表 + 进度条 + 按钮矩阵（下载中=暂停/用浏览器下载/取消；已暂停=继续/取消；完成=打开文件夹/删除；失败/取消=重试/用浏览器下载/删除），**事件驱动刷新（`__dshdDlChanged`；下载线程每 500ms fire 一次进度）**，点击外部/ESC 关闭；样式沿用弹窗经验：独立 id CSS + `[hidden]{display:none!important}`（下拉用 `position:fixed;top:44px;right:12px`，无遮罩）。
 - **全部 `app.state::<T>()` 一律用 `try_state`**：回调（on_download / on_window_event / tray / RunEvent::Exit / HTTP）可能在 `manage()` 之前触发，`state()` 会 panic 且在 C 回调上下文无法 unwind → fail-fast 0xc0000409（实测崩溃根因）。未就绪时降级处理。
 - ureq 2.12 API 注意：取响应头用 `resp.header("content-length")`（返回 `Option<&str>`，无 `headers()` 方法），借用需在闭包内转 String。
 - 锚点日志：「[download] start/intercepted/cancel/pause/finished」。
@@ -98,7 +111,15 @@ WebView2 页面无法直接调 Tauri API（生产模式），统一走 HTTP 控�
 - **`BackendStatus` 是 snake_case 序列化**（没加 `rename_all`）：前端读 `next_retry_sec`，写成 `nextRetrySec` 会恒为 undefined（loading.html 的重试倒计时曾因此从不显示）。
 - **透明窗口必须隐藏创建**：`transparent(true)` + 立即可见 → 子 WebView 渲染前会闪一下桌面/材质。改为 `.visible(false)`，由外壳层 `act('ping')` 触发 `reveal_main_window()`（幂等），并加 1.5s 兜底防止 chrome 页加载失败导致窗口永不显示；显示前顺带 `on_shell_resize` 校准布局。
 - **子 WebView 初始尺寸不能写死**：原先硬编码 `1440x864`，小屏 / DPI 缩放下首帧错位，要等第一次 `Moved`/`Resized` 才被 `relayout_children` 纠正。改为按 `inner_size() / scale_factor()` 实算。
-- **启动页要走 HTTP 轮询兜底**：子 WebView 的 Tauri IPC 在生产模式未必可用（capability 的 `windows` 不覆盖子 webview），loading.html 原先只监听 `backend-status` 事件，失败就永远停在初始文案。现以 `GET /status` 800ms 轮询为主通道，事件与 `eval` 为辅。
+- **启动页也不轮询**：子 WebView 的 Tauri IPC 在生产模式未必可用（capability 的 `windows` 不覆盖子 webview），loading.html 只做**一次** `GET /status` 初始化拉取；此后由 Rust `emit`/`publish` 直接 eval `window.__dshdStatus` 到 `get_webview("dsh")` 推送（与 chrome 一致）。不要恢复 `setInterval` 轮询。
+
+## memos-cloud-dsh-plugin 兼容修复（2026-08 起，本地补丁）
+
+- **背景**：web profile 里的 `@memtensor/memos-cloud-dsh-plugin@0.1.0` 依赖 `@deepseek-ai/dsh-settings` 旧导出（`installSettingsSection`/`settingsNamespace`），dsh 0.1.2-alpha.2 已移除 → **`dsh web` 启动即挂**（`does not provide an export named 'installSettingsSection'`）。用户用 `--profile resolve`（不含该插件）作为临时方案。
+- **上游无修复**：npm 最新仍是 0.1.0（2026-08-16）；GitHub `MemTensor/MemOS-Cloud-Dsh-Plugin` 最后提交同日（0.1.0-beta.1），`MemOS-Cloud-OpenClaw-Plugin` 已删除 `packages/dsh` 子包。故在 `assets/memos-cloud-dsh-plugin-fixed/` 固化补丁，详见其 `PATCH-NOTES.md`。
+- **补丁内容**：`installSettingsSection(ctx,...)` → `ctx.inject(["settings"], (sctx) => sctx.settings.installSection(ctx, ...))`；`settingsNamespace(ns)` → 直接字符串。其余 peer 导入（launchEnvironmentOf/isAppendSurfaceEvent/credentialRef/createUserMessage）当前版本仍存在，未动。
+- **部署**：`pwsh scripts\apply-memos-plugin-fix.ps1`（复制到 `~/.dsh/profiles/web/vendor/` + package.json 改 `link:` 依赖 + `pnpm install`）。补丁会跟随 `link:` 依赖在重建 node_modules 后保留；`dsh plugin add/remove` 不破坏它，但**再次 `dsh plugin add @memtensor/memos-cloud-dsh-plugin`（registry 版本）会替换 link: 依赖**，需重跑脚本。
+- **注意**：本地验证 web profile 完整启动若与正在运行的本机会话冲突，会报 `task-board ledger is already owned by process <pid>`（task-board 单实例锁），用 `--patch` 临时 overlay 禁用 `web-ui-task-board` 条目即可验证（`--patch` 必须放在 `--no-open` 等透传参数之前）。
 
 ## 会话协作约定
 

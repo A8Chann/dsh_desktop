@@ -4,9 +4,10 @@ DeepSeek Harness 的 Windows 桌面端。把 `dsh web` 从「cmd 敲命令 + 浏
 
 - **Tauri（Rust + WebView2）**：单文件 exe 约 11MB（Electron 版 90MB），启动更快、内存更省；
 - **自动拉起后端**：找不到 dsh 时**测速选最快 npm 源自动安装**（不用 npx），随后拉起 `dsh web` 并内嵌加载 GUI；
+- **环境管理**：⋯ 菜单「环境管理」可增删改/切换 dsh 版本与 dsh profile；版本安装到独立目录互不覆盖，切换只影响下次启动；可新建空 web 环境或复制现有 profile（含 node_modules）修复出错环境；
 - **自绘标题栏**（参照 Deepseek-Harness-EAC 风格）：玻璃拟态、跟随 dsh 主题；
   - 左侧：图标 + 标题 + 后端状态徽标（比 EAC 多出的状态显示：运行中 · 端口 / 启动中 / 异常·重试）；
-  - 右侧：⋯ 菜单（重启 Web 服务 / 重新加载 / 在浏览器打开 / 关于 / 退出）+ 最小化 / 最大化 / 关闭；
+  - 右侧：⋯ 菜单（环境管理 / 重启 Web 服务 / 重新加载 / 在浏览器打开 / 关于 / 退出）+ 最小化 / 最大化 / 关闭；
   - 按钮经本地 HTTP 控制服务（`127.0.0.1:19431`）可靠执行窗口操作；
 - **托盘**：双击/左键单击显示主窗口，右键菜单含「显示主窗口 / 重启后端 / 在浏览器打开 / 打开日志目录 / 退出」；
 - **关闭弹窗**：点标题栏 ✕、Alt+F4 或任务栏关闭时弹出选择框：「退出」真正结束应用（自动终止后端进程）/「缩小到托盘」继续后台运行 /「取消」（托盘菜单或 ⋯ 菜单「退出」直接退出，不弹窗）；
@@ -44,10 +45,11 @@ src-tauri/                 Tauri（Rust）桌面壳
   src/
     main.rs                入口：窗口/托盘/菜单/后端导航与状态推送
     backend.rs             dsh 后端管理：拉起/接管外部实例/退避自愈/状态发布
+    environments.rs        环境管理：dsh 版本独立目录安装/CRUD/切换 + profile 扫描/新建/复制
     controls.rs            自绘标题栏注入脚本 + 本地 HTTP 控制服务 + 插件变更监控 + 控制通道 + 自动汇报
     settings.rs            设置读写（%APPDATA%\DSH Desktop\settings.json，与旧版兼容）
     util.rs                日志/netstat 端口探测/HTTP 探测
-  frontend/                loading.html（启动页）
+  frontend/                loading.html（启动页）+ chrome.html（标题栏/弹层/环境管理面板）
   icons/                   应用图标集
 scripts/                   图标生成（纯 Node，零依赖）
 assets/                    icon.png / icon.ico 源图标
@@ -57,6 +59,7 @@ assets/                    icon.png / icon.ico 源图标
 
 | 操作 | 方式 |
 |---|---|
+| 切换 dsh 版本 / Profile | ⋯ 菜单「环境管理」→ 选择版本/Profile 点「使用」（自动重启并刷新） |
 | 重启后端 | 标题栏 ⋯ 菜单「重启 Web 服务」（重启后自动刷新）/ 托盘 |
 | 刷新前端 | ⋯ 菜单「重新加载」 |
 | 窗口控制 | 自绘标题栏 ─ ▢ ✕ |

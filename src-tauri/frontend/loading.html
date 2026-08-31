@@ -77,15 +77,15 @@
       }
     }
 
-    // 主通道：本地控制服务轮询（生产模式子 WebView 的 IPC 未必可用，HTTP 一定通）
-    function poll() {
+    // 事件驱动主通道：Rust 通过 backend-status emit + get_webview("dsh") eval 推送；
+    // 这里只做一次初始化拉取（不做轮询），防止首帧错过早期状态。
+    function fetchOnce() {
       fetch('http://127.0.0.1:19431/status')
         .then(function (r) { return r.json(); })
         .then(render)
         .catch(function () {});
     }
-    poll();
-    setInterval(poll, 800);
+    fetchOnce();
 
     // 辅助通道：事件推送（可用时更即时）
     try {

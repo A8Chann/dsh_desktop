@@ -14,8 +14,7 @@ use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::window::{Effect, EffectsBuilder};
-use tauri::WebviewBuilder;
-use tauri::{AppHandle, Manager, WebviewUrl};
+use tauri::{AppHandle, Manager};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -35,6 +34,12 @@ pub struct AppState {
     pub popup_downloads_visible: AtomicBool,
     /// 下载设置弹层是否可见。
     pub popup_settings_visible: AtomicBool,
+    /// 环境管理（版本/Profile）弹层是否可见。
+    pub popup_env_visible: AtomicBool,
+    /// 环境管理进行中的任务（安装/更新等）。
+    pub env_task: Mutex<Option<crate::environments::EnvTask>>,
+    /// 最近一次环境管理异步任务错误（安装/更新失败时前端提示用）。
+    pub env_last_error: Mutex<Option<String>>,
     /// 最近一次弹窗显示时间（毫秒时间戳）：用于弹层守卫（打开瞬间不计为“点外部”）。
     pub last_popup_shown_ms: AtomicU64,
     /// DeepSeek 内容页是否已完成首次导航（chat.deepseek.com）。
@@ -351,7 +356,7 @@ pub const INJECT_JS: &str = r##"
       })
       .catch(function () {});
   }
-  setInterval(pollDls, 1000);
+  // 下载面板为事件驱动（见 chrome.html / downloads.rs fire），历史注入脚本不再轮询。
   function showDlsPanel() {
     buildDlsPanel();
     dlPanelEl.hidden = false;
@@ -741,6 +746,7 @@ fn overlay_flag<'a>(state: &'a AppState, name: &str) -> &'a AtomicBool {
         "popup-close" => &state.popup_close_visible,
         "popup-downloads" => &state.popup_downloads_visible,
         "popup-settings" => &state.popup_settings_visible,
+        "popup-env" => &state.popup_env_visible,
         _ => &state.popup_menu_visible,
     }
 }
@@ -748,9 +754,12 @@ fn overlay_flag<'a>(state: &'a AppState, name: &str) -> &'a AtomicBool {
 /// 弹层展开后外壳层需覆盖的高度（逻辑 px，含阴影余量）。退出弹层居中 → 全窗。
 fn overlay_span(name: &str) -> f64 {
     match name {
-        "popup-menu" => 36.0 + 372.0,
-        "popup-downloads" => 36.0 + 546.0,
-        "popup-settings" => 36.0 + 420.0,
+        // 弹窗展开时外壳层覆盖全窗：避免阴影/圆角被 WebView 尺寸裁掉。
+        "popup-menu" => f64::INFINITY,
+        "popup-downloads" => f64::INFINITY,
+        "popup-settings" => f64::INFINITY,
+        "popup-env" => f64::INFINITY,
+        "popup-close" => f64::INFINITY,
         _ => f64::INFINITY,
     }
 }
@@ -770,7 +779,7 @@ fn set_shell_extent(app: &AppHandle) {
     let h = size.height;
     let base = (36.0 * scale).round() as u32;
     let mut need = base;
-    for name in ["popup-menu", "popup-downloads", "popup-settings", "popup-close"] {
+    for name in ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close"] {
         if overlay_flag(state.inner(), name).load(Ordering::SeqCst) {
             let span = overlay_span(name);
             if span.is_infinite() {
@@ -793,6 +802,7 @@ fn popup_js_key(name: &str) -> &'static str {
         "popup-close" => "close",
         "popup-downloads" => "dl",
         "popup-settings" => "settings",
+        "popup-env" => "env",
         _ => "menu",
     }
 }
@@ -831,14 +841,6 @@ fn overlay_set(app: &AppHandle, state: &Arc<AppState>, name: &str, on: bool) {
 fn overlay_toggle(app: &AppHandle, state: &Arc<AppState>, name: &str) {
     let on = overlay_flag(state, name).load(Ordering::SeqCst);
     overlay_set(app, state, name, !on);
-}
-
-/// 关闭所有弹层（“点外部”）。
-fn close_all_overlays(app: &AppHandle, state: &Arc<AppState>) {
-    overlay_set(app, state, "popup-menu", false);
-    overlay_set(app, state, "popup-close", false);
-    overlay_set(app, state, "popup-downloads", false);
-    overlay_set(app, state, "popup-settings", false);
 }
 
 /// 注入内容页的主题桥（事件驱动，替代 Rust 轮询）：
@@ -904,7 +906,6 @@ pub fn theme_bridge_js(src: &str) -> String {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startObs);
   else startObs();
-  setInterval(send, 1000);
 })();"##
     .replace("__SRC__", src)
 }
@@ -1194,6 +1195,14 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
             overlay_toggle(app, state, "popup-settings");
             true
         }
+        "popup-env" => {
+            overlay_toggle(app, state, "popup-env");
+            true
+        }
+        "popup-env-hide" => {
+            overlay_set(app, state, "popup-env", false);
+            true
+        }
         // 下载“询问保存位置”确认/取消由 /action 分发到 handle_download_action（带 dir 参数）
         // 用户点击主窗内容/标题栏非菜单按钮处（“点外部”）→ 关闭弹层。
         // Edge 行为：下载面板在有进行中任务时不因点外部关闭（仅有徽标/显式关闭）。
@@ -1204,10 +1213,11 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
                 if now_millis().saturating_sub(state2.last_popup_shown_ms.load(Ordering::SeqCst)) < 400 {
                     return; // 刚打开弹层（点击衔接期）：不关
                 }
-                // 菜单/设置/退出弹层：一律关闭
+                // 菜单/设置/退出/环境弹层：一律关闭
                 overlay_set(&app2, &state2, "popup-menu", false);
                 overlay_set(&app2, &state2, "popup-close", false);
                 overlay_set(&app2, &state2, "popup-settings", false);
+                overlay_set(&app2, &state2, "popup-env", false);
                 // 下载面板：有进行中任务时保留（Edge 逻辑）
                 let keep_dl = state2.popup_downloads_visible.load(Ordering::SeqCst)
                     && app2
@@ -1330,6 +1340,242 @@ fn handle_download_action(
     }
 }
 
+fn notify_env_changed(app: &AppHandle) {
+    if let Some(c) = app.get_webview("chrome") {
+        let _ = c.eval("window.__dshdEnvChanged && window.__dshdEnvChanged();");
+    }
+}
+
+/// 注入到 DSH 内容 WebView 的「切换环境」全屏 loading 脚本：
+/// 覆盖整个内容 WebView（不含标题栏，标题栏在外壳层）。
+pub fn switch_loading_js() -> String {
+    r##"(function () {
+  if (window.__dshdSwitchLoadingInjected) return;
+  window.__dshdSwitchLoadingInjected = true;
+  var ID = '__dshd_switch_loading__';
+  var el = null, textEl = null;
+  function ensure() {
+    if (el) return;
+    var style = document.createElement('style');
+    style.textContent =
+      '#' + ID + '{position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;display:grid;place-items:center;' +
+      'background:rgba(3,7,16,.58);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);' +
+      'font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif}' +
+      '#' + ID + '[hidden]{display:none!important}' +
+      '#' + ID + ' .box{display:flex;flex-direction:column;align-items:center;gap:14px;padding:28px 38px;border-radius:16px;' +
+      'background:color-mix(in srgb,#0b1220 88%,white);border:1px solid rgba(255,255,255,.12);' +
+      'box-shadow:0 18px 60px rgba(0,0,0,.55);color:#e6ecff}' +
+      '#' + ID + ' .sp{width:30px;height:30px;border-radius:50%;border:3px solid rgba(147,197,253,.3);border-top-color:#93c5fd;animation:dshdSwSpin .8s linear infinite}' +
+      '@keyframes dshdSwSpin{to{transform:rotate(360deg)}}' +
+      '#' + ID + ' .txt{font-size:13.5px;font-weight:600;letter-spacing:.2px}';
+    document.head.appendChild(style);
+    el = document.createElement('div');
+    el.id = ID;
+    el.hidden = true;
+    el.innerHTML = '<div class="box"><div class="sp"></div><div class="txt" id="' + ID + '-text">正在切换环境…</div></div>';
+    document.body.appendChild(el);
+    textEl = el.querySelector('#' + ID + '-text');
+  }
+  window.__dshdSwitchLoading = function (text, on) {
+    ensure();
+    if (textEl) textEl.textContent = text || '正在切换环境…';
+    el.hidden = !on;
+  };
+})();"##
+        .to_string()
+}
+
+/// 在 DSH 内容 WebView 内显示/隐藏切换 loading（整个内容 WebView，不盖标题栏）。
+pub fn switch_loading(app: &AppHandle, on: bool, text: &str) {
+    if let Some(w) = app.get_webview("dsh") {
+        let t = text.replace('\\', "\\\\").replace('\'', "\\'");
+        let js = format!("window.__dshdSwitchLoading && window.__dshdSwitchLoading('{}', {});", t, on);
+        let _ = w.eval(&js);
+    }
+}
+
+/// 隐藏 DSH 内容 WebView 内的切换 loading（后端失败/超时等兜底）。
+pub fn hide_switch_loading(app: &AppHandle) {
+    switch_loading(app, false, "");
+}
+
+fn spawn_version_add(app: tauri::AppHandle, state: Arc<AppState>, label: String, spec: String) {
+    let task = crate::environments::EnvTask {
+        kind: "version-add".to_string(),
+        phase: "starting".to_string(),
+        detail: "准备安装…".to_string(),
+        target: format!("dsh {}", spec),
+    };
+    *state.env_last_error.lock().unwrap() = None;
+    *state.env_task.lock().unwrap() = Some(task);
+    std::thread::spawn(move || {
+        let app2 = app.clone();
+        let update = |phase: &str, detail: &str, _fetched: u32| {
+            if let Some(t) = state.env_task.lock().unwrap().as_mut() {
+                t.phase = phase.to_string();
+                t.detail = detail.to_string();
+            }
+            notify_env_changed(&app2);
+        };
+        match crate::environments::add_version(&state.settings, &state.log, Some(&label), &spec, &update) {
+            Ok(v) => {
+                state.log.info(&format!("[env] 版本安装完成: {} -> {}", v.label, v.dir));
+                *state.env_last_error.lock().unwrap() = None;
+            }
+            Err(e) => {
+                state.log.error(&format!("[env] 版本安装失败: {}", e));
+                *state.env_last_error.lock().unwrap() = Some(e);
+            }
+        }
+        *state.env_task.lock().unwrap() = None;
+        notify_env_changed(&app2);
+    });
+}
+
+fn spawn_version_update(
+    app: tauri::AppHandle,
+    state: Arc<AppState>,
+    id: String,
+    spec: String,
+    label: String,
+) {
+    let task = crate::environments::EnvTask {
+        kind: "version-update".to_string(),
+        phase: "starting".to_string(),
+        detail: "准备更新…".to_string(),
+        target: id.clone(),
+    };
+    *state.env_last_error.lock().unwrap() = None;
+    *state.env_task.lock().unwrap() = Some(task);
+    std::thread::spawn(move || {
+        let app2 = app.clone();
+        let update = |phase: &str, detail: &str, _fetched: u32| {
+            if let Some(t) = state.env_task.lock().unwrap().as_mut() {
+                t.phase = phase.to_string();
+                t.detail = detail.to_string();
+            }
+            notify_env_changed(&app2);
+        };
+        let spec_opt = if spec.trim().is_empty() { None } else { Some(spec.as_str()) };
+        let label_opt = if label.trim().is_empty() { None } else { Some(label.as_str()) };
+        match crate::environments::update_version(
+            &state.settings,
+            &state.log,
+            &id,
+            spec_opt,
+            label_opt,
+            &update,
+        ) {
+            Ok(v) => {
+                state.log.info(&format!("[env] 版本更新完成: {} -> {}", v.label, v.installed.unwrap_or_default()));
+                *state.env_last_error.lock().unwrap() = None;
+            }
+            Err(e) => {
+                state.log.error(&format!("[env] 版本更新失败: {}", e));
+                *state.env_last_error.lock().unwrap() = Some(e);
+            }
+        }
+        *state.env_task.lock().unwrap() = None;
+        notify_env_changed(&app2);
+    });
+}
+
+fn handle_env_action(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+    name: &str,
+    q: &std::collections::HashMap<String, String>,
+) -> Result<serde_json::Value, String> {
+    let get = |k: &str| url_decode(q.get(k).map(|x| x.as_str()).unwrap_or(""));
+    match name {
+        "env-version-use" => {
+            let id = get("id");
+            let label = get("label");
+            crate::environments::activate_version(&state.settings, &id)?;
+            state.log.info(&format!("[env] 切换 dsh 版本: {}", id));
+            let text = if label.trim().is_empty() {
+                "正在切换 dsh 版本…".to_string()
+            } else {
+                format!("正在切换 dsh 版本「{}」…", label)
+            };
+            switch_loading(app, true, &text);
+            state.backend.restart("env-switch");
+            Ok(serde_json::json!({"ok": true, "restart": true}))
+        }
+        "env-version-rename" => {
+            let id = get("id");
+            let label = get("label");
+            crate::environments::rename_version(&state.settings, &id, &label)?;
+            Ok(serde_json::json!({"ok": true}))
+        }
+        "env-version-remove" => {
+            let id = get("id");
+            crate::environments::remove_version(&state.settings, &state.log, &id)?;
+            state.log.info(&format!("[env] 删除版本: {}", id));
+            Ok(serde_json::json!({"ok": true}))
+        }
+        "env-version-update" => {
+            if state.env_task.lock().unwrap().is_some() {
+                return Err("已有安装/更新任务进行中，请稍候".to_string());
+            }
+            let id = get("id");
+            let spec = get("spec");
+            let label = get("label");
+            spawn_version_update(app.clone(), state.clone(), id, spec, label);
+            Ok(serde_json::json!({"ok": true, "task": "updating"}))
+        }
+        "env-version-add" => {
+            if state.env_task.lock().unwrap().is_some() {
+                return Err("已有安装/更新任务进行中，请稍候".to_string());
+            }
+            let spec = get("spec");
+            if spec.trim().is_empty() {
+                return Err("请填写 dsh 版本".to_string());
+            }
+            let label = get("label");
+            spawn_version_add(app.clone(), state.clone(), label, spec);
+            Ok(serde_json::json!({"ok": true, "task": "installing"}))
+        }
+        "env-profile-use" => {
+            let name = get("p");
+            crate::environments::activate_profile(&state.settings, &name)?;
+            state.log.info(&format!("[env] 切换 profile: {}", name));
+            switch_loading(app, true, &format!("正在切换 Profile「{}」…", name));
+            state.backend.restart("env-switch");
+            Ok(serde_json::json!({"ok": true, "restart": true}))
+        }
+        "env-profile-add-empty" => {
+            let name = get("p");
+            let v = crate::environments::add_empty_profile(&state.settings, &name)?;
+            state.log.info(&format!("[env] 新建空 profile: {}", v.name));
+            Ok(serde_json::json!({"ok": true}))
+        }
+        "env-profile-copy" => {
+            let name = get("p");
+            let src = get("src");
+            let modules = get("modules") == "1";
+            let v = crate::environments::copy_profile(&state.settings, &src, &name, modules)?;
+            state.log.info(&format!("[env] 复制 profile: {} -> {} (modules={})", src, v.name, modules));
+            Ok(serde_json::json!({"ok": true}))
+        }
+        "env-profile-rename" => {
+            let old = get("old");
+            let name = get("p");
+            crate::environments::rename_profile(&state.settings, &old, &name)?;
+            state.log.info(&format!("[env] 重命名 profile: {} -> {}", old, name));
+            Ok(serde_json::json!({"ok": true}))
+        }
+        "env-profile-remove" => {
+            let name = get("p");
+            crate::environments::remove_profile(&state.settings, &state.log, &name)?;
+            state.log.info(&format!("[env] 删除 profile: {}", name));
+            Ok(serde_json::json!({"ok": true}))
+        }
+        "env-refresh" => Ok(serde_json::json!({"ok": true})),
+        _ => Err(format!("未知环境动作: {}", name)),
+    }
+}
+
 pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -1397,14 +1643,39 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                     ("GET", "/action") => {
                         let name = url_decode(&q.get("name").cloned().unwrap_or_default());
                         state.log.info(&format!("[http] action: {}", name));
-                        let ok = if name.starts_with("download-") || name == "dl-ask-confirm" || name == "dl-ask-cancel" {
-                            handle_download_action(&app, &state, &name, &q)
+                        if name.starts_with("env-") {
+                            match handle_env_action(&app, &state, &name, &q) {
+                                Ok(v) => format!(
+                                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{}",
+                                    cors,
+                                    serde_json::to_string(&v).unwrap_or_else(|_| "{\"ok\":false}".to_string())
+                                ),
+                                Err(e) => format!(
+                                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{{\"ok\":false,\"error\":\"{}\"}}",
+                                    cors,
+                                    e.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " ")
+                                ),
+                            }
                         } else {
-                            run_action(&app, &state, &name)
-                        };
+                            let ok = if name.starts_with("download-") || name == "dl-ask-confirm" || name == "dl-ask-cancel" {
+                                handle_download_action(&app, &state, &name, &q)
+                            } else {
+                                run_action(&app, &state, &name)
+                            };
+                            format!(
+                                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{{\"ok\":{}}}",
+                                cors, ok
+                            )
+                        }
+                    }
+                    ("GET", "/env") => {
+                        let mut data = crate::environments::env_view(&state.settings);
+                        data.busy = state.env_task.lock().unwrap().clone();
+                        data.last_error = state.env_last_error.lock().unwrap().clone();
+                        let s = serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string());
                         format!(
-                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{{\"ok\":{}}}",
-                            cors, ok
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{}",
+                            cors, s
                         )
                     }
                     ("GET", "/downloads") => {
@@ -1519,11 +1790,12 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                                     .unwrap_or_default()
                             });
                         let payload = format!(
-                            r#"{{"dir":"{}","ask":{},"autoShow":{},"tint":{},"material":"{}"}}"#,
+                            r#"{{"dir":"{}","ask":{},"autoShow":{},"tint":{},"popTint":{},"material":"{}"}}"#,
                             dir.replace('\\', "\\\\").replace('"', "\\\""),
                             s.ask_download_location,
                             s.show_downloads_on_start,
                             s.titlebar_tint,
+                            s.popup_tint,
                             s.window_material
                         );
                         format!(
@@ -1540,6 +1812,10 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                             .get("tint")
                             .and_then(|v| v.parse::<u8>().ok())
                             .map(|v| v.min(100));
+                        let pop_tint = q
+                            .get("popTint")
+                            .and_then(|v| v.parse::<u8>().ok())
+                            .map(|v| v.min(100));
                         let material = q
                             .get("material")
                             .map(|v| v.to_lowercase())
@@ -1552,14 +1828,17 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                             if let Some(t) = tint {
                                 s.titlebar_tint = t;
                             }
+                            if let Some(t) = pop_tint {
+                                s.popup_tint = t;
+                            }
                             if let Some(m) = material.clone() {
                                 s.window_material = m;
                             }
                             crate::settings::save_settings(&s);
                         }
                         state.log.info(&format!(
-                            "[settings] 已保存 dir={:?} ask={} auto={} tint={:?} material={:?}",
-                            state.settings.lock().unwrap().download_dir, ask, auto, tint, material
+                            "[settings] 已保存 dir={:?} ask={} auto={} tint={:?} popTint={:?} material={:?}",
+                            state.settings.lock().unwrap().download_dir, ask, auto, tint, pop_tint, material
                         ));
                         // 材质改动立即生效（无需重启）
                         if material.is_some() {
@@ -1671,14 +1950,14 @@ pub fn start_control_watcher(state: Arc<AppState>) {
 
 fn run_install_plugin(state: &Arc<AppState>, spec: &str) -> bool {
     // ??? dsh ???
-    let (dsh, node_bin) = {
+    let (dsh, node_bin, profile) = {
         let s = state.settings.lock().unwrap();
         let node = s
             .node_bin
             .clone()
             .unwrap_or_else(|| resolve_node_fallback());
         let dsh = s.dsh_bin.clone().or_else(|| find_dsh_on_path());
-        (dsh, node)
+        (dsh, node, s.profile.clone())
     };
     let Some(dsh) = dsh else {
         return false;
@@ -1689,17 +1968,11 @@ fn run_install_plugin(state: &Arc<AppState>, spec: &str) -> bool {
             .map(|h| format!("{}{}", h, "\\.dsh"))
             .unwrap_or_default()
     });
-    let profile_dir = PathBuf::from(&dsh_home).join("profiles").join("web");
+    let profile_dir = PathBuf::from(&dsh_home).join("profiles").join(&profile);
     let _ = std::fs::create_dir_all(&profile_dir);
     let out = Command::new(&node_bin)
-        .args([
-            dsh.as_str(),
-            "plugin",
-            "--profile",
-            "web",
-            "add",
-            spec,
-        ])
+        .arg(&dsh)
+        .args(["plugin", "--profile", &profile, "add", spec])
         .current_dir(&profile_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1753,55 +2026,58 @@ fn now_iso() -> String {
 
 pub fn start_plugin_watcher(state: Arc<AppState>) {
     std::thread::spawn(move || {
-        let profile_dir = {
-            let s = state.settings.lock().unwrap();
-            let home = std::env::var("DSH_HOME")
-                .ok()
-                .or_else(|| {
-                    std::env::var("USERPROFILE")
-                        .ok()
-                        .map(|h| format!("{}\\{}", h, ".dsh"))
-                })
-                .unwrap_or_default();
-            format!("{}\\profiles\\{}", home, s.profile)
-        };
-        if !std::path::Path::new(&profile_dir).exists() {
-            state.log.info(&format!("插件监控：profile 目录不存在 {}", profile_dir));
-            return;
-        }
-        let (tx, rx) = channel::<notify::Result<notify::Event>>();
-        let mut watcher = match RecommendedWatcher::new(tx, notify::Config::default()) {
-            Ok(w) => w,
-            Err(e) => {
-                state.log.warn(&format!("插件监控器初始化失败: {}", e));
-                return;
-            }
-        };
-        if watcher
-            .watch(std::path::Path::new(&profile_dir), RecursiveMode::NonRecursive)
-            .is_err()
-        {
-            state.log.warn("插件监控器 watch 启动失败");
-            return;
-        }
-        state.log.info(&format!("插件变更监控已启动 {}", profile_dir));
-
+        let mut _watcher: Option<RecommendedWatcher> = None;
+        let mut rx: Option<std::sync::mpsc::Receiver<notify::Result<notify::Event>>> = None;
+        let mut current_profile = String::new();
         let mut pending: Option<std::time::Instant> = None;
         loop {
-            // ???????????????6s ????????????
-            match rx.recv_timeout(Duration::from_millis(500)) {
-                Ok(Ok(ev)) => {
-                    let changed = ev.paths.iter().any(|p| {
-                        p.file_name()
-                            .map(|n| n == "package.json" || n == "pnpm-lock.yaml")
-                            .unwrap_or(false)
-                    });
-                    if changed {
-                        pending = Some(std::time::Instant::now());
+            // 每次循环读取当前 profile：切换 profile 后自动重新监听新目录
+            let profile = {
+                let s = state.settings.lock().unwrap();
+                s.profile.clone()
+            };
+            if profile != current_profile {
+                current_profile = profile.clone();
+                pending = None;
+                _watcher = None;
+                rx = None;
+                let dir = crate::environments::dsh_home().join("profiles").join(&profile);
+                if dir.exists() {
+                    let (tx, rxx) = channel::<notify::Result<notify::Event>>();
+                    match RecommendedWatcher::new(tx, notify::Config::default()) {
+                        Ok(mut w) => {
+                            if w.watch(&dir, RecursiveMode::NonRecursive).is_ok() {
+                                state.log.info(&format!("插件变更监控已启动 {}", dir.display()));
+                                _watcher = Some(w);
+                                rx = Some(rxx);
+                            } else {
+                                state.log.warn(&format!("插件监控器 watch 启动失败 {}", dir.display()));
+                            }
+                        }
+                        Err(e) => state.log.warn(&format!("插件监控器初始化失败: {}", e)),
                     }
+                } else {
+                    state.log.info(&format!("插件监控：profile 目录不存在 {}", dir.display()));
                 }
-                Ok(Err(_)) => {}
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {}
+            }
+            if let Some(rx) = rx.as_ref() {
+                match rx.recv_timeout(Duration::from_millis(500)) {
+                    Ok(Ok(ev)) => {
+                        let changed = ev.paths.iter().any(|p| {
+                            p.file_name()
+                                .map(|n| n == "package.json" || n == "pnpm-lock.yaml")
+                                .unwrap_or(false)
+                        });
+                        if changed {
+                            pending = Some(std::time::Instant::now());
+                        }
+                    }
+                    Ok(Err(_)) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                    | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {}
+                }
+            } else {
+                std::thread::sleep(Duration::from_millis(500));
             }
             if let Some(t) = pending {
                 if t.elapsed() >= Duration::from_secs(6) {
