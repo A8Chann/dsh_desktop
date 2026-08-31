@@ -47,6 +47,11 @@ fn main() {
     }
     let app = controls::register_scheme(
         tauri::Builder::default()
+            // 单实例：必须最先注册。重复启动（双击两次图标等）时聚焦已有窗口后退出，
+            // 否则第二个实例的 19431 控制服务绑定失败，其标题栏按钮会全部操作到第一个窗口上。
+            .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+                show_main_window(app);
+            }))
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_opener::init()),
     )
@@ -83,17 +88,31 @@ fn main() {
             deepseek_loaded: AtomicBool::new(false),
             theme_dsh: Mutex::new(None),
             theme_deepseek: Mutex::new(None),
+            window_revealed: AtomicBool::new(false),
+            token: controls::generate_token(),
         });
         app.manage(state.clone());
         // 自管下载器（拦截 WebView2 下载后由 Rust 线程下载，支持进度/暂停/取消）
         // notify：下载状态每次变化立即推给外壳层（徽标/面板即时刷新，不依赖轮询）
+        // on_done：单个任务完成时发系统通知（后台下载完了用户不必盯着徽标）
         {
             let app2 = app.handle().clone();
-            app.manage(downloads::Downloads::new(log.clone(), Arc::new(move || {
+            let notify = Arc::new(move || {
                 if let Some(c) = app2.get_webview("chrome") {
                     let _ = c.eval("window.__dshdDlChanged && window.__dshdDlChanged();");
                 }
-            })));
+            });
+            let log2 = log.clone();
+            let on_done = Arc::new(move |name: &str| {
+                log2.info(&format!("[download] 完成通知: {}", name));
+                #[cfg(windows)]
+                {
+                    if let Err(e) = win_toast::show_download_done_toast(name) {
+                        log2.info(&format!("下载完成 toast 发送失败: {e}"));
+                    }
+                }
+            });
+            app.manage(downloads::Downloads::new(log.clone(), notify, on_done));
         }
 
         // 开始菜单快捷方式（AUMID + 应用图标）：一次性创建/刷新。
@@ -171,7 +190,8 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .center()
         .decorations(false)
         .shadow(true)
-        .transparent(true) // 标题栏区域透出 Mica 云母材质（内容区被子 WebView 盖住不受影响）
+        .transparent(true) // 标题栏区域透出窗口材质（内容区被子 WebView 盖住不受影响）
+        .visible(false) // 先隐藏：透明窗口在子 WebView 渲染前会闪一下桌面，就绪后再 show
         .build()?;
 
     // 窗口材质（Acrylic 亚克力 / Mica 云母 / 无）：首帧先按设置铺一层，
@@ -198,13 +218,29 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         }
     }
 
+    // 子 WebView 初始尺寸按窗口真实尺寸算：写死 1440x864 会在小屏 / DPI 缩放下
+    // 首帧错位，要等第一次 Moved/Resized 才被 relayout 纠正。
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let phys = window.inner_size().unwrap_or(tauri::PhysicalSize::new(1440, 900));
+    let win_w = phys.width as f64 / scale;
+    let win_h = phys.height as f64 / scale;
+    let content_h = (win_h - 36.0).max(1.0);
+
+    // 控制服务令牌：只注入自家页面，外部网页拿不到 → 无法调用受保护接口
+    let token = app
+        .try_state::<Arc<AppState>>()
+        .map(|s| s.token.clone())
+        .unwrap_or_default();
+    let token_script = format!("window.__DSHD_K = '{}';", token);
+
     // DSH 内容页（标题栏下方整块内容区）：loading.html → 后端就绪后导航到 dsh web
     // 注入：主题桥（事件驱动上报主题）+ 点击转发（点 DSH 内容 = “点外部”，关弹窗）
     let dsh = tauri::WebviewBuilder::new("dsh", WebviewUrl::App("loading.html".into()))
+        .initialization_script(token_script.clone())
         .initialization_script(controls::theme_bridge_js("dsh"))
-        .initialization_script(controls::click_forwarder_js())
+        .initialization_script(controls::click_forwarder_js(&token))
         .on_download(controls::intercept_download);
-    window.add_child(dsh, LogicalPosition::new(0.0, 36.0), LogicalSize::new(1440.0, 864.0))?;
+    window.add_child(dsh, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
 
     // DeepSeek 内容页：启动即创建（占位页、隐藏），首次切换才导航到 chat.deepseek.com
     // 必须在外壳层之前创建（子 WebView 后创建者在上层，外壳层要保持在最上）
@@ -215,17 +251,45 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         )
         .initialization_script(controls::theme_bridge_js("deepseek"))
-        .initialization_script(controls::click_forwarder_js())
+        .initialization_script(controls::click_forwarder_js(&token))
         .on_download(controls::intercept_download);
-    let ds_webview = window.add_child(deepseek, LogicalPosition::new(0.0, 36.0), LogicalSize::new(1440.0, 864.0))?;
+    let ds_webview = window.add_child(deepseek, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
     let _ = ds_webview.hide();
 
     // 外壳层：最后创建（保持在最上层）。透明 WebView：空闲仅 36px 条；
     // 弹层打开时由 Rust 扩展其覆盖范围（透明，内容透过可见，弹层画在这层）
     let chrome = tauri::WebviewBuilder::new("chrome", WebviewUrl::App("chrome.html".into()))
+        .initialization_script(token_script)
         .transparent(true);
-    window.add_child(chrome, LogicalPosition::new(0.0, 0.0), LogicalSize::new(1440.0, 36.0))?;
+    window.add_child(chrome, LogicalPosition::new(0.0, 0.0), LogicalSize::new(win_w, 36.0))?;
+
+    // 兜底：即使 chrome 页加载失败（不会发 ping），也要保证窗口最终可见
+    {
+        let app2 = app.handle().clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            let app3 = app2.clone();
+            let _ = app2.run_on_main_thread(move || {
+                reveal_main_window(&app3);
+            });
+        });
+    }
     Ok(())
+}
+
+/// 首次显示主窗口（幂等）：由 chrome 页的 ping 触发，或启动 1.5s 后兜底触发。
+pub fn reveal_main_window(app: &tauri::AppHandle) {
+    let Some(state) = app.try_state::<Arc<AppState>>() else {
+        return;
+    };
+    if state.window_revealed.swap(true, Ordering::SeqCst) {
+        return; // 已显示过
+    }
+    controls::on_shell_resize(app); // 按真实尺寸校准一次子 WebView 布局
+    if let Some(win) = app.get_window("main") {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
 }
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
@@ -343,11 +407,16 @@ fn start_navigator(app: tauri::AppHandle, state: Arc<AppState>) {
     });
 }
 
-/// navigate 后延时多次 eval 推送当前状态给 chrome 标题栏（幂等；注入脚本会据此更新状态徽标）。
+/// navigate 后在几个时间点把当前状态推给 chrome 标题栏（幂等；覆盖页面加载慢的情况）。
 fn push_status_after_navigate(app: tauri::AppHandle, state: Arc<AppState>) {
     std::thread::spawn(move || {
-        for delay_ms in [600u64, 1600, 3200, 6000] {
-            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        let start = std::time::Instant::now();
+        // 绝对时间点（相对 navigate 时刻），不是逐个累加的间隔
+        for at_ms in [600u64, 1600, 3200, 6000] {
+            let elapsed = start.elapsed().as_millis() as u64;
+            if at_ms > elapsed {
+                std::thread::sleep(std::time::Duration::from_millis(at_ms - elapsed));
+            }
             if let Some(wv) = app.get_webview("chrome") {
                 let st = state.backend.current_status();
                 if let Ok(json) = serde_json::to_string(&st) {

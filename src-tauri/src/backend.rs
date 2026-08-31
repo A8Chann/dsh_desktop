@@ -298,8 +298,22 @@ fn spawn_own(
     let dsh_bin = match dsh_bin {
         Some(b) => b,
         None => {
-            // 未找到 dsh：默认安装（测速选最快源 + npm 安装）
-            match default_install_dsh(&node_bin) {
+            // 未找到 dsh：默认安装（测速选最快源 + npm 安装）。
+            // 这一步耗时可达 1~2 分钟，必须持续上报 install 进度，
+            // 否则启动页只有一行静态文字，看起来像卡死。
+            let report = |phase: &str, detail: &str, fetched: u32| {
+                let st = BackendStatus {
+                    state: "starting".to_string(),
+                    install: Some(InstallState {
+                        phase: phase.to_string(),
+                        detail: detail.to_string(),
+                        fetched,
+                    }),
+                    ..BackendStatus::new("starting")
+                };
+                publish(&app, &status, st);
+            };
+            match default_install_dsh(&node_bin, &log, &report) {
                 Ok(bin) => {
                     {
                         let mut s = settings.lock().unwrap();
@@ -507,14 +521,19 @@ fn adopt_external(
     }
 }
 
+/// 发布错误态并按退避重试。保留已知的 port/pid/profile_dir——
+/// 整体重建会把它们清空，导致 kill_owned 之后无法按端口反查补杀。
 fn fail(app: AppHandle, status: Arc<Mutex<BackendStatus>>, stop: &Arc<AtomicBool>, msg: &str) {
-    let st = BackendStatus {
+    let base = status.lock().unwrap().clone();
+    let err_status = |secs: Option<u32>| BackendStatus {
         state: "error".to_string(),
+        url: None,
         error: Some(msg.to_string()),
-        next_retry_sec: Some(RETRY_DELAYS_SEC[0] as u32),
-        ..BackendStatus::new("error")
+        next_retry_sec: secs,
+        install: None,
+        ..base.clone()
     };
-    publish(&app, &status, st);
+    publish(&app, &status, err_status(Some(RETRY_DELAYS_SEC[0] as u32)));
     if stop.load(Ordering::SeqCst) {
         return;
     }
@@ -525,13 +544,7 @@ fn fail(app: AppHandle, status: Arc<Mutex<BackendStatus>>, stop: &Arc<AtomicBool
         }
         let idx = (retry as usize).min(RETRY_DELAYS_SEC.len() - 1);
         let secs = RETRY_DELAYS_SEC[idx];
-        let st = BackendStatus {
-            state: "error".to_string(),
-            error: Some(msg.to_string()),
-            next_retry_sec: Some(secs as u32),
-            ..BackendStatus::new("error")
-        };
-        publish(&app, &status, st);
+        publish(&app, &status, err_status(Some(secs as u32)));
         // 退避 sleep 按 1 秒切片，保证 stop（重启/退出）能及时打断
         for _ in 0..secs {
             if stop.load(Ordering::SeqCst) {
@@ -573,6 +586,24 @@ fn run_loop(
         );
         attempts += 1;
         if attempts > 100 {
+            // 彻底放弃：必须发一个没有 next_retry_sec 的终态，
+            // 否则界面停在“异常 · N 秒后重试”，用户不知道已经不再自愈。
+            log.info("dsh 后端连续失败次数过多，停止自动重试（需手动「重启 Web 服务」）");
+            let base = status.lock().unwrap().clone();
+            publish(
+                &app,
+                &status,
+                BackendStatus {
+                    state: "stopped".to_string(),
+                    url: None,
+                    error: Some(
+                        "自动重试次数已用尽，请从标题栏 ⋯ 菜单手动「重启 Web 服务」".to_string(),
+                    ),
+                    next_retry_sec: None,
+                    install: None,
+                    ..base
+                },
+            );
             break;
         }
     }
@@ -712,8 +743,15 @@ fn registry_latency(url: &str) -> Option<u64> {
     }
 }
 
-fn default_install_dsh(node_bin: &str) -> Result<String, String> {
-    // 1) 测速选源（TCP 握手排序，3s 超时）
+/// 默认安装 dsh：测速选最快 npm 源 → `npm install -g @deepseek-ai/dsh@latest` → 定位 bin.js。
+/// `report(phase, detail, fetched)` 在每个阶段回调，用于把进度推到启动页（否则这 1~2 分钟毫无反馈）。
+fn default_install_dsh(
+    node_bin: &str,
+    log: &Arc<Logger>,
+    report: &dyn Fn(&str, &str, u32),
+) -> Result<String, String> {
+    // 1) 测速选源（TCP 握手排序，4s 超时）
+    report("measuring", "正在测速选择最快的 npm 源…", 0);
     let mut scored: Vec<(u64, &str, &str)> = Vec::new();
     for (name, url) in REGISTRY_CANDIDATES {
         if let Some(ms) = registry_latency(url) {
@@ -726,6 +764,7 @@ fn default_install_dsh(node_bin: &str) -> Result<String, String> {
         .copied()
         .ok_or("所有 npm 源均无法连接")?;
     let reg = registry.to_string();
+    log.info(&format!("[install] 选用 npm 源：{} {}", name, reg));
 
     // 2) node npm-cli.js install -g @deepseek-ai/dsh@latest --registry <reg>
     let npm_cli = PathBuf::from(node_bin)
@@ -739,7 +778,8 @@ fn default_install_dsh(node_bin: &str) -> Result<String, String> {
         .filter(|p| p.exists())
         .ok_or("无法定位 npm（npm-cli.js）")?;
 
-    let out = Command::new(node_bin)
+    report("installing", &format!("正在从 {} 安装 dsh…", name), 0);
+    let mut child = Command::new(node_bin)
         .args([
             npm_cli.to_str().unwrap_or(""),
             "install",
@@ -755,25 +795,54 @@ fn default_install_dsh(node_bin: &str) -> Result<String, String> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .creation_flags(0x08000000)
-        .output()
+        .spawn()
         .map_err(|e| format!("npm 安装 dsh 失败: {}", e))?;
 
-    if !out.status.success() {
-        let tail = String::from_utf8_lossy(&out.stderr);
-        let tail: String = tail.lines().rev().take(4).collect::<Vec<_>>().join(" ");
-        let tail_part = if tail.is_empty() {
+    // 流式读 stderr：npm --loglevel info 每抓一个包打一行 "http fetch"，据此报进度；
+    // 同时留存尾部若干行，失败时作为错误详情。
+    let mut tail: Vec<String> = Vec::new();
+    let mut fetched = 0u32;
+    if let Some(err) = child.stderr.take() {
+        let mut reader = BufReader::new(err);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    let t = line.trim_end().to_string();
+                    if t.is_empty() {
+                        continue;
+                    }
+                    if t.contains("http fetch") {
+                        fetched += 1;
+                        report(
+                            "installing",
+                            &format!("正在从 {} 下载依赖…", name),
+                            fetched,
+                        );
+                    }
+                    tail.push(t);
+                    if tail.len() > 40 {
+                        tail.remove(0);
+                    }
+                }
+            }
+        }
+    }
+    let st = child.wait().map_err(|e| format!("npm 安装 dsh 失败: {}", e))?;
+    if !st.success() {
+        let detail: String = tail.iter().rev().take(4).cloned().collect::<Vec<_>>().join(" ");
+        let detail = if detail.is_empty() {
             String::new()
         } else {
-            format!(": {}", tail)
+            format!(": {}", detail)
         };
-        return Err(format!(
-            "npm 安装 dsh 失败 (exit={:?}){}",
-            out.status.code(),
-            tail_part
-        ));
+        return Err(format!("npm 安装 dsh 失败 (exit={:?}){}", st.code(), detail));
     }
 
     // 3) npm root -g 定位全局目录
+    report("locating", "安装完成，正在定位 dsh…", fetched);
     let out = Command::new(node_bin)
         .args([npm_cli.to_str().unwrap_or(""), "root", "-g"])
         .stdout(Stdio::piped())
@@ -794,6 +863,6 @@ fn default_install_dsh(node_bin: &str) -> Result<String, String> {
     if !bin.exists() {
         return Err(format!("安装完成但未找到 dsh 入口: {}", bin.display()));
     }
-    let _ = name;
+    log.info(&format!("[install] dsh 安装完成：{}", bin.display()));
     Ok(bin.to_string_lossy().to_string())
 }

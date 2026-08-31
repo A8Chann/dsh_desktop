@@ -4,41 +4,97 @@
 <meta charset="UTF-8" />
 <title>DSH Desktop</title>
 <style>
+  /* 亮暗跟随系统：启动页底色会被主题桥采样为标题栏底色，
+     硬编码深色会让亮色环境下启动闪一下黑。 */
+  :root { --bg: #ffffff; --fg: #1d2539; --sub: #6b7280; --accent: #2563eb; --ring: rgba(37,99,235,.18); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0b1220; --fg: #e6ecff; --sub: #64748b; --accent: #93c5fd; --ring: rgba(147,197,253,.16); }
+  }
   html, body { height: 100%; margin: 0; }
   body {
     display: grid; place-items: center;
-    background: #0b1220; color: #cbd5e1;
+    background: var(--bg); color: var(--fg);
     font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
   }
-  .card { text-align: center; }
-  .logo { width: 72px; height: 72px; margin: 0 auto 16px; }
-  .hint { font-size: 13px; color: #64748b; }
-  #status { font-size: 15px; color: #93c5fd; margin: 8px 0; }
+  .card { text-align: center; max-width: 460px; padding: 0 24px; }
+  .logo { width: 72px; height: 72px; margin: 0 auto 18px; display: block; }
+  .spinner {
+    width: 22px; height: 22px; margin: 0 auto 12px;
+    border: 2.5px solid var(--ring); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #status { font-size: 15px; color: var(--accent); margin: 8px 0; min-height: 24px; }
+  #status.err { color: #ef4444; }
+  .hint { font-size: 13px; color: var(--sub); }
+  /* 安装进度：npm 总包数未知，用不定长滚动条 + 已获取包数表达 */
+  #bar { height: 3px; border-radius: 99px; background: var(--ring); overflow: hidden; margin: 14px auto 0; width: 240px; display: none; }
+  #bar > i { display: block; height: 100%; width: 30%; background: var(--accent); border-radius: 99px; animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
 </style>
 </head>
 <body>
   <div class="card">
     <img class="logo" src="./icon.png" alt="" />
+    <div class="spinner" id="spinner"></div>
     <div id="status">正在启动 dsh 后端…</div>
-    <div class="hint">首次启动可能需要自动安装 dsh（联网），请稍候</div>
+    <div class="hint" id="hint">首次启动可能需要自动安装 dsh（联网），请稍候</div>
+    <div id="bar"><i></i></div>
   </div>
   <script>
-    const statusEl = document.getElementById('status');
-    async function main() {
-      try {
-        const { event } = window.__TAURI__;
-        await event.listen('backend-status', (e) => {
-          const s = e.payload;
-          if (s.state === 'running') statusEl.textContent = `后端就绪 · 端口 ${s.port ?? ''}，正在切换到 GUI…`;
-          else if (s.install) statusEl.textContent = `正在自动安装 dsh…（已获取 ${s.install.fetched || 0} 个包）`;
-          else if (s.state === 'error') statusEl.textContent = `后端异常：${s.error || ''}${s.nextRetrySec ? `（${s.nextRetrySec}s 后重试）` : ''}`;
-          else statusEl.textContent = '正在启动 dsh 后端…';
-        });
-      } catch (e) {
-        statusEl.textContent = '加载状态监听失败: ' + e;
+    var statusEl = document.getElementById('status');
+    var hintEl = document.getElementById('hint');
+    var barEl = document.getElementById('bar');
+    var spinnerEl = document.getElementById('spinner');
+
+    function render(s) {
+      if (!s) return;
+      var install = s.install;
+      statusEl.classList.remove('err');
+      barEl.style.display = 'none';
+      spinnerEl.style.visibility = 'visible';
+      if (s.state === 'running' || s.state === 'external') {
+        statusEl.textContent = '后端就绪 · 端口 ' + (s.port || '') + '，正在打开界面…';
+        hintEl.textContent = '';
+      } else if (install) {
+        // 首次启动自动安装 dsh：测速 → 下载依赖 → 定位入口，全程有反馈
+        statusEl.textContent = install.detail || '正在自动安装 dsh…';
+        hintEl.textContent = install.fetched ? '已获取 ' + install.fetched + ' 个依赖包' : '首次启动需要联网安装，请稍候';
+        barEl.style.display = 'block';
+      } else if (s.state === 'error') {
+        statusEl.classList.add('err');
+        // 注意：BackendStatus 是 snake_case 序列化，字段名为 next_retry_sec
+        var retry = s.next_retry_sec ? '（' + s.next_retry_sec + 's 后重试）' : '';
+        statusEl.textContent = '后端异常：' + (s.error || '未知错误') + retry;
+        hintEl.textContent = '将自动重试；也可从标题栏 ⋯ 菜单手动「重启 Web 服务」';
+        spinnerEl.style.visibility = 'hidden';
+      } else if (s.state === 'restarting') {
+        statusEl.textContent = '正在重启后端…';
+        hintEl.textContent = '';
+      } else {
+        statusEl.textContent = '正在启动 dsh 后端…';
+        hintEl.textContent = '首次启动可能需要自动安装 dsh（联网），请稍候';
       }
     }
-    main();
+
+    // 主通道：本地控制服务轮询（生产模式子 WebView 的 IPC 未必可用，HTTP 一定通）
+    function poll() {
+      fetch('http://127.0.0.1:19431/status')
+        .then(function (r) { return r.json(); })
+        .then(render)
+        .catch(function () {});
+    }
+    poll();
+    setInterval(poll, 800);
+
+    // 辅助通道：事件推送（可用时更即时）
+    try {
+      if (window.__TAURI__ && window.__TAURI__.event) {
+        window.__TAURI__.event.listen('backend-status', function (e) { render(e.payload); });
+      }
+    } catch (e) {}
+    // Rust 也会直接 eval 推送
+    window.__dshdStatus = render;
   </script>
 </body>
 </html>

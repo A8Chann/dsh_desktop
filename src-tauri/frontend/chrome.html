@@ -151,7 +151,7 @@
   .actions .quit:hover { background: rgba(232,17,35,.24); }
 
   /* 下载管理：面板封顶，列表内部滚动 */
-  #popup-downloads { top: 44px; right: 12px; width: 420px; padding: 10px 12px 14px; max-height: 500px; }
+  #popup-downloads { top: 44px; right: 12px; width: 420px; padding: 10px 12px; max-height: 500px; }
   #popup-downloads.visible { display: flex; flex-direction: column; }
   #dl-list { overflow-y: auto; min-height: 0; flex: 1 1 auto; margin-right: -8px; padding-right: 6px; }
   #dl-list::-webkit-scrollbar { width: 6px; }
@@ -198,11 +198,18 @@
     position: relative; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin-bottom: 8px;
     border-radius: 10px; background: color-mix(in srgb, var(--dshd-fg) 6%, transparent);
   }
+  /* 行间距只作用于行与行之间；最后一行不带走 margin-bottom，
+     否则底部 = 行距 8px + 面板 padding 12px = 20px，比左右明显更宽 */
+  #dl-list .dl-row:last-child { margin-bottom: 0; }
   .dl-row:hover { background: color-mix(in srgb, var(--dshd-fg) 9%, transparent); }
   .dl-row .meta { font-size: 11.5px; color: color-mix(in srgb, var(--dshd-fg) 74%, transparent); word-break: break-all; line-height: 16px; display: flex; align-items: center; gap: 6px; }
   .dl-row .meta .fic { color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); flex: none; display: inline-flex; }
   .dl-row .meta .fname { word-break: break-all; }
   .dl-row .dl-state { font-size: 10.5px; color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); font-family: Consolas, monospace; }
+  .dl-row .dl-path {
+    font-size: 10.5px; color: color-mix(in srgb, var(--dshd-fg) 42%, transparent);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
+  }
   .dl-row .dl-actions { display: flex; align-items: center; gap: 6px; min-height: 24px; }
   /* 打开文件 = 蓝色超链接文本，hover 下划线 */
   .dl-open {
@@ -236,7 +243,7 @@
   .dl-row.clickable:active { background: color-mix(in srgb, var(--dshd-fg) 12%, transparent); }
   /* 按行内按钮/链接时，整行不进入按压选中态（仅元素自身高亮） */
   .dl-row.clickable:active:has(a:active, button:active) { background: color-mix(in srgb, var(--dshd-fg) 9%, transparent); }
-  #dl-empty { text-align: center; color: color-mix(in srgb, var(--dshd-fg) 45%, transparent); font-size: 12px; padding: 14px 0 6px; }
+  #dl-empty { text-align: center; color: color-mix(in srgb, var(--dshd-fg) 45%, transparent); font-size: 12px; padding: 14px 0 0; }
 
   /* 设置 */
   #popup-settings { top: 44px; right: 12px; width: 400px; padding: 12px 14px 14px; }
@@ -302,7 +309,7 @@
   <div class="left">
     <img class="icon" id="icon" alt="" draggable="false" />
     <span class="title">DSH Desktop</span>
-    <span class="badge">v2.2.0</span>
+    <span class="badge">v2.3.0</span>
     <span class="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
   </div>
   <div class="right">
@@ -328,7 +335,7 @@
 
 <div class="popup" id="popup-menu">
   <div class="mh">
-    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.2.0</span></div>
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.3.0</span></div>
     <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
   </div>
   <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
@@ -357,6 +364,7 @@
   <div class="dl-head">
     <h3>下载管理</h3>
     <div style="display:flex;gap:6px;align-items:center">
+      <button id="dl-pause-all" title="暂停所有进行中的下载">全部暂停</button>
       <button class="dl-gear" id="dl-gear" title="下载设置">⚙</button>
       <button id="dl-close">关闭</button>
     </div>
@@ -424,8 +432,17 @@
 
 <script>
   var HTTP = 'http://127.0.0.1:19431';
-  function act(a, q) { new Image().src = HTTP + '/action?name=' + encodeURIComponent(a) + (q ? '&' + q : ''); }
+  // 控制令牌由 Rust 经 initialization_script 注入；受保护接口（/action、/dl-set）必须带上，
+  // 否则本机任意网页都能用 <img src> 调用它们。
+  var K = window.__DSHD_K || '';
+  function act(a, q) { new Image().src = HTTP + '/action?name=' + encodeURIComponent(a) + '&k=' + K + (q ? '&' + q : ''); }
   function logWeb(m) { try { new Image().src = HTTP + '/log?msg=' + encodeURIComponent(m); } catch (e) {} }
+  // 下载项名称/错误可能来自服务器响应头或 URL，入 innerHTML 前必须转义
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
   window.onerror = function (m, src, line) { logWeb('SHELL JSERROR ' + m + ' @' + src + ':' + line); };
   logWeb('shell v2.1 loaded');
 
@@ -447,6 +464,8 @@
     if (!el) return;
     el.classList.toggle('visible', !!on);
     if (name === 'dl' && on) { dlSeenEpoch = dlMaxId; dlSaveSeen(); }
+    // 面板关闭时复位其内部模态，否则下次打开会糊着一层遮罩/右键菜单
+    if (name === 'dl' && !on) { hideDelConfirm(); hideCtx(); }
     if (name === 'settings' && on) { loadDlSettings(); }
   };
 
@@ -576,6 +595,22 @@
     hideCtx();
   }
   function bytesTxt(b) { return (b / 1048576).toFixed(1); }
+  // 速度与剩余时间：下载管理的基本信息
+  function speedTxt(bps) {
+    if (!bps || bps <= 0) return '';
+    if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+    if (bps >= 1024) return (bps / 1024).toFixed(0) + ' KB/s';
+    return bps + ' B/s';
+  }
+  function etaTxt(t) {
+    if (!t.total || !t.speed || t.speed <= 0) return '';
+    var left = t.total - t.bytes;
+    if (left <= 0) return '';
+    var s = Math.round(left / t.speed);
+    if (s < 60) return '剩 ' + s + ' 秒';
+    if (s < 3600) return '剩 ' + Math.round(s / 60) + ' 分钟';
+    return '剩 ' + (s / 3600).toFixed(1) + ' 小时';
+  }
 
   var SVG_FILE = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M3.5 2h6l3 3v9h-9z"/><path d="M9.5 2v3h3"/></svg>';
   var SVG_FOLDER = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M1.8 3.4h4.4l2 2h6v7.2H1.8z"/></svg>';
@@ -612,8 +647,11 @@
     var row = document.createElement('div');
     row.className = 'dl-row' + (t.state === 'done' && !deleted ? ' clickable' : '') + (deleted ? ' deleted' : '');
     row.setAttribute('data-id', t.id);
+    // 保存位置：只显示所在目录，完整路径在 title 里
+    var dir = (t.file || '').replace(/[\\/][^\\/]*$/, '');
     row.innerHTML =
-      '<div class="meta" title="' + t.name + '"><span class="fic">' + SVG_FILE + '</span><span class="fname">' + t.name + '</span></div>' +
+      '<div class="meta" title="' + esc(t.file || t.name) + '"><span class="fic">' + SVG_FILE + '</span><span class="fname">' + esc(t.name) + '</span></div>' +
+      (dir ? '<div class="dl-path" title="' + esc(t.file) + '">' + esc(dir) + '</div>' : '') +
       '<div class="dl-actions">' + leftHtml +
       (iconsHtml ? '<span class="row-icons">' + iconsHtml + '</span>' : '') +
       '</div>' + barHtml + btnsHtml;
@@ -657,11 +695,17 @@
     var s = (DL_STATE[t.state] || t.state);
     if (t.state === 'downloading' || t.state === 'paused') s += ' · ' + pct + '%';
     if (t.total) s += ' · ' + bytesTxt(t.bytes) + '/' + bytesTxt(t.total) + ' MB';
-    if (t.error) s += ' · ' + t.error;
+    if (t.state === 'downloading') {
+      var sp = speedTxt(t.speed);
+      if (sp) s += ' · ' + sp;
+      var eta = etaTxt(t);
+      if (eta) s += ' · ' + eta;
+    }
+    if (t.error) s += ' · ' + esc(t.error);
     return s;
   }
   function rowDataSig(t, pct) {
-    return pct + '|' + (t.bytes || 0) + '|' + (t.total || 0) + '|' + (t.error || '') + '|' + t.name;
+    return pct + '|' + (t.bytes || 0) + '|' + (t.total || 0) + '|' + (t.speed || 0) + '|' + (t.error || '') + '|' + t.name;
   }
   function renderDl(list) {
     dlById = {};
@@ -746,10 +790,11 @@
     }
     CTX.innerHTML = items.map(function (it) {
       if (it === 'sep') return '<div class="sep"></div>';
+      // danger 用属性形式，与菜单弹层的 .item[danger] 选择器一致（写成 class 不会生效）
       var danger = it[2] === 1 ? ' danger' : '';
       var actName = it[1], extra = it[2];
       var payload = actName === 'download-pause' ? ' data-on="' + (extra === '0' ? '0' : '1') + '"' : '';
-      return '<button class="item' + danger + '" data-a="' + actName + '" data-id="' + t.id + '"' + payload + '>' + it[0] + '</button>';
+      return '<button class="item"' + danger + ' data-a="' + actName + '" data-id="' + t.id + '"' + payload + '>' + it[0] + '</button>';
     }).join('');
     CTX.classList.add('visible');
     var w = CTX.offsetWidth, h = CTX.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
@@ -760,7 +805,11 @@
   CTX.addEventListener('click', function (e) {
     var b = e.target.closest('.item');
     if (!b) return;
-    dlBtnAct(b.getAttribute('data-a'), Number(b.getAttribute('data-id')), b.getAttribute('data-on'));
+    var a = b.getAttribute('data-a');
+    var id = Number(b.getAttribute('data-id'));
+    // 删除磁盘文件走二次确认，与行内垃圾桶图标行为一致
+    if (a === 'download-delete') { hideCtx(); showDelConfirm(id); return; }
+    dlBtnAct(a, id, b.getAttribute('data-on'));
   });
   document.addEventListener('mousedown', function (e) {
     if (!CTX.classList.contains('visible')) return;
@@ -784,6 +833,7 @@
     act('popup-dl-settings');
   });
   document.getElementById('dl-close').addEventListener('click', function () { act('popup-dl'); });
+  document.getElementById('dl-pause-all').addEventListener('click', function () { act('download-pause-all'); });
   // 取消：还原为上次保存的值（撤销实时预览）
   document.getElementById('set-cancel').addEventListener('click', function () {
     applyTint(dlSettings.tint);
@@ -800,7 +850,7 @@
     dlSettings.autoShow = auto === 1;
     dlSettings.tint = tint;
     dlSettings.material = material;
-    fetch(HTTP + '/dl-set?dir=' + encodeURIComponent(dir) + '&ask=' + ask + '&auto=' + auto + '&tint=' + tint + '&material=' + material)
+    fetch(HTTP + '/dl-set?k=' + K + '&dir=' + encodeURIComponent(dir) + '&ask=' + ask + '&auto=' + auto + '&tint=' + tint + '&material=' + material)
       .catch(function () {});
     act('popup-dl-settings');
   });
@@ -853,11 +903,19 @@
   });
   var dlPollBusy = false;
   var dlDirty = false;
+  var dlPauseAllBtn = document.getElementById('dl-pause-all');
+  // 没有下载中任务时，「全部暂停」没有意义，隐藏
+  function refreshDlPauseAll(list) {
+    var hasDownloading = list.some(function (t) { return t.state === 'downloading'; });
+    dlPauseAllBtn.style.display = hasDownloading ? '' : 'none';
+  }
   function pollDl() {
     if (dlPollBusy) { dlDirty = true; return; } // 正在刷新：标记脏，等待后补一次
     dlPollBusy = true;
     dlDirty = false;
     fetch(HTTP + '/downloads').then(function (r) { return r.json(); }).then(function (list) {
+      var wantOpen = false; // 本轮是否需要请求打开下载面板（至多一次）
+      refreshDlPauseAll(list);
       renderDl(list);
       dlMaxId = list.reduce(function (m, t) { return Math.max(m, t.id); }, 0);
       var active = list.filter(function (t) { return t.state === 'downloading' || t.state === 'paused'; });
@@ -912,24 +970,36 @@
       list.forEach(function (t) {
         if ((t.state === 'downloading' || t.state === 'paused') && !knownIds[t.id]) {
           knownIds[t.id] = true;
-          if (dlSettings.autoShow && !POPUP.dl.classList.contains('visible')) {
-            act('popup-dl');
+          // 同一轮里多个新任务只请求弹出一次：popup-dl 是 toggle，
+          // 且 classList 要等 Rust 回推才更新，连发会开了又关。
+          if (dlSettings.autoShow && !POPUP.dl.classList.contains('visible') && !wantOpen) {
+            wantOpen = true;
           }
         }
       });
+      if (wantOpen) act('popup-dl');
       list.forEach(function (t) { knownIds[t.id] = true; });
+      // 面板开着时，新完成的任务应直接算“已查看”，否则绿环徽标一直亮到关掉面板才消
+      if (POPUP.dl.classList.contains('visible') && dlMaxId > dlSeenEpoch) {
+        dlSeenEpoch = dlMaxId;
+        dlSaveSeen();
+      }
       // 询问保存位置
       fetch(HTTP + '/dl-ask').then(function (r) { return r.json(); }).then(function (a) {
         if (a && a.pending) {
           dlAskName.textContent = a.name || '';
           dlAskDir.value = a.dir || '';
           if (dlAskEl.hidden) { dlAskEl.hidden = false; dlAskSeen = true; }
-          if (!POPUP.dl.classList.contains('visible') && dlAskSeen) {
-            act('popup-dl'); // 询问时强制打开面板
-            dlAskSeen = false;
+          // 只在面板确实关着、且本轮没有其他人请求过打开时才请求打开，
+          // 避免与自动弹出的 toggle 相互抵消（一开一关等于没开）
+          if (!POPUP.dl.classList.contains('visible') && dlAskSeen && !wantOpen) {
+            wantOpen = true;
+            act('popup-dl');
           }
+          dlAskSeen = false;
         } else {
           dlAskEl.hidden = true;
+          dlAskSeen = false;
         }
       }).catch(function () {});
     }).catch(function () {})

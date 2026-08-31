@@ -190,6 +190,19 @@ pub fn ensure_start_menu_shortcut() -> Result<(), String> {
     Ok(())
 }
 
+/// 弹出「下载完成」toast。与插件变更 toast 共用 AUMID 身份与图标机制。
+pub fn show_download_done_toast(file_name: &str) -> Result<(), String> {
+    let icon = ensure_registry_identity()?;
+    let icon_uri = icon.to_string_lossy().replace('\\', "/");
+    tauri_winrt_notification::Toast::new(APP_ID)
+        .icon(std::path::Path::new(&icon_uri), tauri_winrt_notification::IconCrop::Square, APP_NAME)
+        .title("下载完成")
+        .text1(file_name)
+        .text2("可在标题栏「下载管理」中打开")
+        .show()
+        .map_err(|e| format!("toast 发送失败: {e:?}"))
+}
+
 /// 弹出「插件已变更」toast（显示应用图标）。
 /// 只做纯 WinRT 发通知（快捷方式在应用启动时经隔离进程刷新；watcher 线程
 /// 严禁进程内 COM——实测堆损坏崩溃 0xc0000374）。

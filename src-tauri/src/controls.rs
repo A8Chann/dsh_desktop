@@ -42,6 +42,25 @@ pub struct AppState {
     /// 各内容页最近上报的主题色（bg, fg）：切页时按当前显示页取用。
     pub theme_dsh: Mutex<Option<(String, String)>>,
     pub theme_deepseek: Mutex<Option<(String, String)>>,
+    /// 主窗口是否已首次显示（窗口隐藏创建，等外壳层就绪再 show，避免透明窗口闪桌面）。
+    pub window_revealed: AtomicBool,
+    /// 控制服务令牌：进程启动时生成，只注入自家页面。
+    /// 没有它，本机浏览器里的**任意网页**都能用 `<img src="http://127.0.0.1:19431/action?name=quit">`
+    /// 关掉应用、删下载、改设置（img/GET 不受同源策略限制）。
+    pub token: String,
+}
+
+/// 生成一次性控制令牌（本地防护，非密码学用途）：
+/// 纳秒时间戳 + 进程号 + 一个栈地址（ASLR 熵），足以让外部网页无法猜到。
+pub fn generate_token() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id() as u128;
+    let probe = 0u8;
+    let addr = &probe as *const u8 as u128;
+    format!("{:x}{:x}{:x}", nanos, pid.wrapping_mul(0x9E37), addr)
 }
 
 impl AppState {
@@ -873,8 +892,7 @@ pub fn theme_bridge_js(src: &str) -> String {
     var v = read();
     if (!v || v === last) return; // 值没变不重复上报
     last = v;
-    new Image().src = 'http://127.0.0.1:19431/set-theme?src=__SRC__&t=' + encodeURIComponent(v);
-  }
+    new Image().src = 'http://127.0.0.1:19431/set-theme?src=__SRC__&t=' + encodeURIComponent(v);  }
   send();
   window.addEventListener('load', send);
   function startObs() {
@@ -970,16 +988,17 @@ fn push_theme(app: &AppHandle, state: &AppState, bg: &str, fg: &str) {
 
 /// 注入 DSH 内容页的点击转发：用户在 DSH 页任意处按下鼠标左键 → 上报 main-click（视为“点外部”关弹层）。
 /// 纯坐标转发，无任何视觉/交互副作用；img 请求与主题桥一致，不受 CSP 影响。
-pub fn click_forwarder_js() -> String {
+/// 带 token：/action 属于受保护接口。
+pub fn click_forwarder_js(token: &str) -> String {
     r##"(function () {
   if (window.__dshdClickProxy) return;
   window.__dshdClickProxy = true;
   document.addEventListener('mousedown', function (e) {
     if (e.button !== 0) return;
-    try { new Image().src = 'http://127.0.0.1:19431/action?name=main-click'; } catch (err) {}
+    try { new Image().src = 'http://127.0.0.1:19431/action?name=main-click&k=__TOKEN__'; } catch (err) {}
   }, true);
 })();"##
-    .to_string()
+        .replace("__TOKEN__", token)
 }
 
 /// 壳窗口移动/缩放：重排内容层子 WebView + 重算外壳层覆盖范围。
@@ -1203,6 +1222,8 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
         }
         "ping" => {
             state.log.info("[http] ping received");
+            // 外壳层已执行到页面末尾 → 内容就绪，显示主窗口（幂等，另有 1.5s 兜底）
+            crate::reveal_main_window(app);
             true
         }
         _ => false,
@@ -1288,7 +1309,12 @@ fn handle_download_action(
             state.log.info("[download] 询问被取消");
             true
         }
-        "download-retry" => dl.retry(id).is_some(),
+        "download-retry" => dl.retry(id),
+        "download-pause-all" => {
+            let n = dl.pause_all();
+            state.log.info(&format!("[download] 全部暂停 {} 个任务", n));
+            true
+        }
         "download-browser" => {
             // 转交系统浏览器下载（浏览器自带下载管理；127.0.0.1 URL 用默认浏览器打开）
             match dl.url_of(id) {
@@ -1343,6 +1369,22 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                     .collect();
 
                 let cors = "access-control-allow-origin: *\r\n";
+                // 破坏性接口（执行动作 / 改设置）必须带本进程令牌。
+                // 只读接口（状态、主题、列表、图标）放行，便于排障。
+                let authed = q.get("k").map(|v| v == &state.token).unwrap_or(false);
+                let needs_auth = matches!(path.as_str(), "/action" | "/dl-set");
+                if needs_auth && !authed {
+                    state.log.warn(&format!(
+                        "[http] 拒绝未授权请求 {} name={:?}",
+                        path,
+                        q.get("name")
+                    ));
+                    let body = "{\"ok\":false,\"error\":\"unauthorized\"}";
+                    let resp = format!("HTTP/1.1 403 Forbidden\r\n{}\r\n{}", cors, body);
+                    let _ = s.write_all(resp.as_bytes());
+                    let _ = s.flush();
+                    return;
+                }
                 let resp = match (method, path.as_str()) {
                     ("GET", "/status") => {
                         let st = serde_json::to_string(&state.backend.current_status())
@@ -1540,26 +1582,29 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
     });
 }
 
+/// URL 解码。`%XX` 必须先收集为**字节**再整体按 UTF-8 解码——
+/// 逐字节 `push(v as char)` 会按 Latin-1 语义放大成多个字符，
+/// 中文路径（经 encodeURIComponent 编码）会整体乱码。
 fn url_decode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
     let bytes = s.as_bytes();
+    let mut buf: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
             if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v as char);
+                buf.push(v);
                 i += 3;
                 continue;
             }
         }
         if bytes[i] == b'+' {
-            out.push(' ');
+            buf.push(b' ');
         } else {
-            out.push(bytes[i] as char);
+            buf.push(bytes[i]);
         }
         i += 1;
     }
-    out
+    String::from_utf8_lossy(&buf).into_owned()
 }
 
 // ?????????????????????????????????????????????????????? ????????gent ???????????????????????????????????????????????????????????
