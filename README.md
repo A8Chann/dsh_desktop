@@ -1,10 +1,10 @@
-# 大肥鱼 Desktop 🐟（DSH Desktop）
+# 大肥鱼 Desktop （DSH Desktop）
 
 <div align="center">
 
 <img src="docs/screenshots/logo.png" width="132" alt="大肥鱼 Desktop Logo" />
 
-**DeepSeek Harness 的 Windows 桌面壳** —— 一条只负责「包住」的鱼，不碰内容本身。
+**DeepSeek Harness 的 Windows 桌面壳** —— 一个只负责包住「大肥鱼」的壳，不碰内容本身。
 
 [![Windows](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)](https://github.com/A8Chann/dsh_desktop)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
@@ -79,7 +79,7 @@
    点 ✕ / Alt+F4 弹「退出 / 缩小到托盘」：缩到托盘后端继续跑，随时双击托盘图标回来。
 
 7. **省心守护**
-   后端意外退出自动重启；重复启动自动聚焦已有实例；退出时清理后端进程树，不留孤儿。
+   后端意外退出自动重启；重复启动自动聚焦已有实例；退出时清理后端进程树，不留孤立node进程。
 
 ---
 
