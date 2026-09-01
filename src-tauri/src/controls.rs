@@ -36,6 +36,8 @@ pub struct AppState {
     pub popup_settings_visible: AtomicBool,
     /// 环境管理（版本/Profile）弹层是否可见。
     pub popup_env_visible: AtomicBool,
+    /// 关于（程序信息）弹窗是否可见（居中模态，同菜单弹窗走 overlay 体系）。
+    pub popup_about_visible: AtomicBool,
     /// 环境管理进行中的任务（安装/更新等）。
     pub env_task: Mutex<Option<crate::environments::EnvTask>>,
     /// 最近一次环境管理异步任务错误（安装/更新失败时前端提示用）。
@@ -579,6 +581,10 @@ pub fn handle_dshd(
             if let Some(w) = app.get_webview("dsh") {
                 let _ = w.eval("location.reload()");
             }
+            // reload 销毁弹窗背景幕布 → 弹窗仍开着时自动重推恢复
+            if let Some(state) = app.try_state::<Arc<AppState>>() {
+                popup_backdrop_repush_after_reload(app, &state);
+            }
             json(r#"{"ok":true}"#.to_string())
         }
         "/browser" => {
@@ -751,6 +757,7 @@ fn overlay_flag<'a>(state: &'a AppState, name: &str) -> &'a AtomicBool {
         "popup-downloads" => &state.popup_downloads_visible,
         "popup-settings" => &state.popup_settings_visible,
         "popup-env" => &state.popup_env_visible,
+        "popup-about" => &state.popup_about_visible,
         _ => &state.popup_menu_visible,
     }
 }
@@ -783,7 +790,7 @@ fn set_shell_extent(app: &AppHandle) {
     let h = size.height;
     let base = (36.0 * scale).round() as u32;
     let mut need = base;
-    for name in ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close"] {
+    for name in ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close", "popup-about"] {
         if overlay_flag(state.inner(), name).load(Ordering::SeqCst) {
             let span = overlay_span(name);
             if span.is_infinite() {
@@ -807,6 +814,7 @@ fn popup_js_key(name: &str) -> &'static str {
         "popup-downloads" => "dl",
         "popup-settings" => "settings",
         "popup-env" => "env",
+        "popup-about" => "about",
         _ => "menu",
     }
 }
@@ -841,7 +849,7 @@ fn overlay_set(app: &AppHandle, state: &Arc<AppState>, name: &str, on: bool) {
         // （同 WebView backdrop-filter 真实生效）；全部关闭 → 隐藏。
         // 打开时**不预先推 hide**（只清矩形）：hdie 会先于 chrome.html 的矩形上报到达，
         // 造成"弹窗已出现、幕布延迟闪出"的观感。关闭时推 hide（chrome 不通知关闭）。
-        let any_open = ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close"]
+        let any_open = ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close", "popup-about"]
             .iter()
             .any(|n| overlay_flag(&state2, n).load(Ordering::SeqCst));
         if any_open && flag.load(Ordering::SeqCst) {
@@ -856,8 +864,19 @@ fn overlay_set(app: &AppHandle, state: &Arc<AppState>, name: &str, on: bool) {
 }
 
 /// 切换弹层开关（菜单按钮/退出按钮等）。
+/// 打开时先关闭其它弹层（互斥，Rust flag 为真相源，不依赖前端 visible 判断，
+/// 消除「about 开着点菜单 → 前端没检测到 about → 残留」与「下载面板与菜单并存」的竞态）。
+/// 注：下载面板「进行中任务时点外部不关」由 main-click 单独处理，这里一律互斥关闭。
 fn overlay_toggle(app: &AppHandle, state: &Arc<AppState>, name: &str) {
     let on = overlay_flag(state, name).load(Ordering::SeqCst);
+    if !on {
+        // 即将打开：关掉除自身外的所有弹层（无条件，含下载面板）
+        for other in ["popup-menu", "popup-close", "popup-downloads", "popup-settings", "popup-env", "popup-about"] {
+            if other != name && overlay_flag(state, other).load(Ordering::SeqCst) {
+                overlay_set(app, state, other, false);
+            }
+        }
+    }
     overlay_set(app, state, name, !on);
 }
 
@@ -1110,6 +1129,8 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
             if let Some(w) = app.get_webview("dsh") {
                 let _ = w.eval("location.reload()");
             }
+            // reload 销毁弹窗背景幕布 → 弹窗仍开着时自动重推恢复
+            popup_backdrop_repush_after_reload(app, state);
             true
         }
         // 关闭弹窗 → 缩小到托盘
@@ -1137,6 +1158,19 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
             if let Some(u) = state.backend.current_status().url {
                 let _ = tauri_plugin_opener::OpenerExt::opener(app).open_url(u, None::<&str>);
             }
+            true
+        }
+        // 「关于」弹窗：走 overlay 弹窗体系（与菜单/设置一致：外壳层扩展覆盖全窗、
+        // z-index 分层、点外部关闭；数据由前端 GET /about 拉取）
+        "about" => {
+            overlay_toggle(app, state, "popup-about");
+            true
+        }
+        // 前往 GitHub 仓库
+        "browser-git" => {
+            state.log.info("[about] 打开 GitHub 仓库");
+            let _ = tauri_plugin_opener::OpenerExt::opener(app)
+                .open_url("https://github.com/A8Chann/dsh_desktop", None::<&str>);
             true
         }
         // 标题栏「切换」拨片：DSH ⇄ DeepSeek 内容页（同层并存，显示/隐藏，不导航、不刷新）
@@ -1214,11 +1248,51 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
             true
         }
         "popup-env" => {
+            // 外部接管实例（owned=false）：环境管理禁用（无法切换外部实例的环境），
+            // 走「启用环境管理」→ env-enable；此处兜底拒绝打开面板
+            let st = state.backend.current_status();
+            if st.state == "external" && !st.owned {
+                state.log.info("[popup-env] 外部接管实例，环境管理已禁用（请先启用环境管理）");
+                return true;
+            }
             overlay_toggle(app, state, "popup-env");
             true
         }
         "popup-env-hide" => {
             overlay_set(app, state, "popup-env", false);
+            true
+        }
+        "popup-about" => {
+            overlay_toggle(app, state, "popup-about");
+            true
+        }
+        "popup-about-hide" => {
+            overlay_set(app, state, "popup-about", false);
+            true
+        }
+        // 外部接管实例（owned=false）无法由桌面端管理（切换版本/Profile 需要重启后端）。
+        // 「启用环境管理」= 外部实例转为桌面端自有管理（不杀）：置 turn_own 标志，
+        // 重启后端后 adopt_external 识别 turn_own → 发布 running/owned=true；
+        // 此后环境管理可用，切换版本/Profile 时 kill_owned 会正常接管该实例并重启新版本。
+        "env-enable" => {
+            let st = state.backend.current_status();
+            if st.state != "external" || st.owned {
+                state.log.info("[env-enable] 当前不是外部接管实例，无需切换");
+                return true;
+            }
+            state.log.info("[env-enable] 接管外部实例为桌面端自有（启用环境管理，不杀外部）");
+            state.backend.turn_own.store(true, Ordering::SeqCst);
+            // 恢复端口为外部实例当前端口（若曾被改过），保证后续重启在同一端口拉起
+            if let Some(port) = st.port {
+                let mut s = state.settings.lock().unwrap();
+                if s.port != port {
+                    s.port = port;
+                    crate::settings::save_settings(&s);
+                }
+            }
+            // 重启：kill_owned（owned=false 不杀外部）→ join → start →
+            // spawn_own 探测同一端口 → turn_own 已置 → 转自有（running/owned=true）
+            state.backend.restart("env-enable");
             true
         }
         // 下载“询问保存位置”确认/取消由 /action 分发到 handle_download_action（带 dir 参数）
@@ -1231,11 +1305,12 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
                 if now_millis().saturating_sub(state2.last_popup_shown_ms.load(Ordering::SeqCst)) < 400 {
                     return; // 刚打开弹层（点击衔接期）：不关
                 }
-                // 菜单/设置/退出/环境弹层：一律关闭
+                // 菜单/设置/退出/环境/关于弹层：一律关闭
                 overlay_set(&app2, &state2, "popup-menu", false);
                 overlay_set(&app2, &state2, "popup-close", false);
                 overlay_set(&app2, &state2, "popup-settings", false);
                 overlay_set(&app2, &state2, "popup-env", false);
+                overlay_set(&app2, &state2, "popup-about", false);
                 // 下载面板：有进行中任务时保留（Edge 逻辑）
                 let keep_dl = state2.popup_downloads_visible.load(Ordering::SeqCst)
                     && app2
@@ -1460,7 +1535,9 @@ pub fn popup_backdrop_js() -> String {
     if (full) {
       el.style.left = '0px'; el.style.top = '0px'; el.style.right = '0px'; el.style.bottom = '0px';
       el.style.width = ''; el.style.height = ''; el.style.borderRadius = '0'; el.style.boxShadow = 'none';
-      el.querySelector('.bl').style.background = 'rgba(8,13,28,.42)';
+      var bl = el.querySelector('.bl');
+      bl.style.borderRadius = '0'; // 全屏：子元素圆角也必须清零，否则四角露圆角缺口
+      bl.style.background = 'rgba(8,13,28,.42)';
     } else {
       var x = rect.x - PAD, y = rect.y - PAD, w = rect.w + PAD * 2, h = rect.h + PAD * 2;
       // 超出视口的部分 clip 掉（弹窗在窗口内，余量可能越界）
@@ -1524,6 +1601,32 @@ pub fn popup_backdrop_set(app: &AppHandle, state: &AppState, any_open: bool) {
             let _ = w.eval(&js);
         }
     }
+}
+
+/// 内容页 reload（切换环境/后端重启）后幕布会随页面销毁——若此时仍有弹窗打开
+/// （环境管理面板未关闭），幕布需自动恢复。延时轮询重推：reload 后页面加载与
+/// 初始化脚本注入需要时间，轮询数秒；每次重推幂等（JS 侧 __dshdPopupBackdrop
+/// 未就绪时被 && 短路，无副作用；就绪后本帧即生效）。无弹窗时立即返回。
+pub fn popup_backdrop_repush_after_reload(app: &AppHandle, state: &Arc<AppState>) {
+    let app = app.clone();
+    let state = state.clone();
+    std::thread::spawn(move || {
+        state.log.info("[backdrop] reload 后开始重推幕布（等待内容页就绪）");
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(300));
+            let any_open = ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close", "popup-about"]
+                .iter()
+                .any(|n| overlay_flag(&state, n).load(Ordering::SeqCst));
+            if !any_open {
+                state.log.info("[backdrop] 重推取消：弹窗已全部关闭");
+                return; // 弹窗已全部关闭，无需恢复
+            }
+            popup_backdrop_set(&app, &state, true);
+        }
+        // 6 秒仍未就绪（异常情况）：最后一次兜底
+        state.log.info("[backdrop] 重推超时，最后一次兜底");
+        popup_backdrop_set(&app, &state, true);
+    });
 }
 
 fn spawn_version_add(app: tauri::AppHandle, state: Arc<AppState>, label: String, spec: String) {
@@ -1770,7 +1873,9 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                     ("GET", "/action") => {
                         let name = url_decode(&q.get("name").cloned().unwrap_or_default());
                         state.log.info(&format!("[http] action: {}", name));
-                        if name.starts_with("env-") {
+                        // 注意：env-enable 不是「环境管理面板」动作（它领 general action，
+                        // 负责外部接管→内部实例切换），不能走 handle_env_action（会静默失败）
+                        if name.starts_with("env-") && name != "env-enable" {
                             match handle_env_action(&app, &state, &name, &q) {
                                 Ok(v) => format!(
                                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{}",
@@ -1851,12 +1956,44 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                             ));
                             *state.popup_rect.lock().unwrap() = Some((r.0, r.1, r.2, r.3, full));
                             // 立即按新矩形刷新幕布（面板尺寸未知时先隐藏，等上报）
-                            let any_open = ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close"]
+                            let any_open = ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close", "popup-about"]
                                 .iter()
                                 .any(|n| overlay_flag(&state, n).load(Ordering::SeqCst));
                             popup_backdrop_set(&app, &state, any_open);
                         }
                         format!("HTTP/1.1 200 OK\r\n{}\r\n{{\"ok\":true}}", cors)
+                    }
+                    // 「关于」信息：程序版本 + 编译期嵌入的 git 信息（发布版无 git 仓库，
+                    // git 信息在构建时固化进二进制）。只读公开，无需鉴权。
+                    ("GET", "/about") => {
+                        // 程序信息 + GitHub 仓库信息（实时拉取；网络失败时降级只给本地字段）
+                        let repo = "A8Chann/dsh_desktop";
+                        let repo_url = format!("https://github.com/{}", repo);
+                        let mut info = serde_json::json!({
+                            "name": "DSH Desktop",
+                            "version": env!("CARGO_PKG_VERSION"),
+                            "gitCommit": env!("DST_GIT_COMMIT"),
+                            "gitDirty": env!("DST_GIT_DIRTY") == "true",
+                            "repoUrl": repo_url,
+                            "repo": repo,
+                        });
+                        // GitHub API 仓库元数据（star/forks/issues/language/license）→ 实时
+                        match fetch_github_repo(repo) {
+                            Some(meta) => {
+                                // 逐字段并入（serde_json 对象合并）
+                                for (k, v) in meta {
+                                    info[k] = v;
+                                }
+                            }
+                            None => {
+                                info["repoError"] = serde_json::json!(true);
+                            }
+                        }
+                        let body = serde_json::to_string(&info).unwrap_or_else(|_| "{}".to_string());
+                        format!(
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{}",
+                            cors, body
+                        )
                     }
                     ("GET", "/icon") => {
                         let bytes: &'static [u8] = include_bytes!("../icons/128x128@2x.png");
@@ -2363,5 +2500,47 @@ fn ureq_post(base: &str, method: &str, body_json: &str) -> Option<String> {
         .ok()?
         .into_string()
         .ok()
+}
+
+/// 拉取 GitHub 仓库元数据（「关于」弹窗用）：star/forks/openIssues/language/license/描述等。
+/// 实时调用 GitHub API（无需鉴权，限流 60/h）；失败返回 None（前端降级）。
+fn fetch_github_repo(repo: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let url = format!("https://api.github.com/repos/{}", repo);
+    let resp = ureq::get(&url)
+        .set(
+            "user-agent",
+            &format!("DSH-Desktop/{}", env!("CARGO_PKG_VERSION")),
+        )
+        .timeout(Duration::from_secs(8))
+        .call()
+        .ok()?;
+    let text = resp.into_string().ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let obj = v.as_object()?;
+    // 只取需要展示的字段，翻译成前端友好的命名
+    let mut out = serde_json::Map::new();
+    out.insert("repoStars".into(), obj.get("stargazers_count").cloned().unwrap_or(serde_json::Value::Null));
+    out.insert("repoForks".into(), obj.get("forks_count").cloned().unwrap_or(serde_json::Value::Null));
+    out.insert("repoIssues".into(), obj.get("open_issues_count").cloned().unwrap_or(serde_json::Value::Null));
+    out.insert(
+        "repoLanguage".into(),
+        obj.get("language").cloned().unwrap_or(serde_json::Value::Null),
+    );
+    out.insert(
+        "repoLicense".into(),
+        obj.get("license")
+            .and_then(|l| l.get("spdx_id"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    out.insert(
+        "repoDescription".into(),
+        obj.get("description").cloned().unwrap_or(serde_json::Value::Null),
+    );
+    out.insert(
+        "repoUpdatedAt".into(),
+        obj.get("pushed_at").cloned().unwrap_or(serde_json::Value::Null),
+    );
+    Some(out)
 }
 

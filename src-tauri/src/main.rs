@@ -90,6 +90,7 @@ fn main() {
             popup_downloads_visible: AtomicBool::new(false),
             popup_settings_visible: AtomicBool::new(false),
             popup_env_visible: AtomicBool::new(false),
+            popup_about_visible: AtomicBool::new(false),
             env_task: Mutex::new(None),
             env_last_error: Mutex::new(None),
             last_popup_shown_ms: AtomicU64::new(0),

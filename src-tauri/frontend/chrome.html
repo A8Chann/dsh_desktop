@@ -167,6 +167,24 @@
   .actions .quit { background: rgba(232,17,35,.14); border-color: rgba(232,17,35,.45); color: #ff7a85; }
   .actions .quit:hover { background: rgba(232,17,35,.24); }
 
+  /* 关于弹窗（右上角模态，同菜单/设置；数据 GET /about 拉取） */
+  #popup-about {
+    top: 44px; right: 8px; width: 380px;
+    padding: 18px 20px 16px; cursor: default;
+    animation: dshdPopIn .09s ease-out;
+  }
+  #popup-about h3 { margin: 0 0 4px; font-size: 15px; font-weight: 700; }
+  #popup-about .ab-sub { font-size: 11px; color: color-mix(in srgb, var(--dshd-fg) 52%, transparent); margin-bottom: 12px; }
+  #popup-about .ab-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; line-height: 22px; }
+  #popup-about .ab-row .k { color: color-mix(in srgb, var(--dshd-fg) 48%, transparent); flex: none; }
+  #popup-about .ab-row .v { color: color-mix(in srgb, var(--dshd-fg) 92%, transparent); font-family: Consolas, monospace; text-align: right; word-break: break-all; }
+  #popup-about .ab-row .v.clean { color: #4ade80; }
+  #popup-about .ab-row .v.dirty { color: #fbbf24; }
+  #popup-about .ab-git { margin: 10px 0 14px; font-size: 11.5px; line-height: 18px; color: color-mix(in srgb, var(--dshd-fg) 55%, transparent); }
+  #popup-about .ab-git a { color: color-mix(in srgb, var(--dshd-fg) 78%, transparent); text-decoration: none; }
+  #popup-about .ab-git a:hover { text-decoration: underline; }
+  #popup-about .actions button.primary { background: color-mix(in srgb, var(--dshd-fg) 92%, transparent); color: color-mix(in srgb, var(--dshd-bg) 94%, white); border-color: transparent; }
+
   /* 下载管理：面板封顶，列表内部滚动 */
   #popup-downloads { top: 44px; right: 12px; width: 420px; padding: 10px 12px; max-height: 500px; }
   #popup-downloads.visible { display: flex; flex-direction: column; }
@@ -422,7 +440,7 @@
   <div class="left">
     <img class="icon" id="icon" alt="" draggable="false" />
     <span class="title">DSH Desktop</span>
-    <span class="badge">v2.5.0</span>
+    <span class="badge">v2.6.0</span>
     <span class="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
   </div>
   <div class="right">
@@ -448,14 +466,14 @@
 
 <div class="popup" id="popup-menu">
   <div class="mh">
-    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.5.0</span></div>
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.6.0</span></div>
     <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
   </div>
   <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
   <button class="item" data-act="reload"><span>重新加载</span><span class="kbd">刷新页面</span></button>
   <button class="item" data-act="toggle-deepseek"><span>切换 DeepSeek 聊天页</span><span class="kbd">DeepSeek</span></button>
   <button class="item" data-act="dl"><span>下载管理</span><span class="kbd">导出文件</span></button>
-  <button class="item" data-act="env"><span>环境管理</span><span class="kbd">版本 · Profile</span></button>
+  <button class="item" id="menu-env-item" data-act="env"><span>环境管理</span><span class="kbd">版本 · Profile</span></button>
   <button class="item" data-act="dl-settings"><span>设置</span><span class="kbd">外观 · 下载</span></button>
   <div class="sep"></div>
   <button class="item" data-act="browser">在浏览器中打开</button>
@@ -471,6 +489,22 @@
     <button id="c-cancel">取消</button>
     <button id="c-tray">缩小到托盘</button>
     <button id="c-quit" class="quit">退出</button>
+  </div>
+</div>
+
+<div class="popup" id="popup-about">
+  <h3>DSH Desktop <span class="dim" id="ab-version" style="font-weight:400;font-size:12px;color:color-mix(in srgb, var(--dshd-fg) 55%, transparent)"></span></h3>
+  <div class="ab-sub">DeepSeek Harness 的 Windows 桌面端（Tauri v2 + WebView2）</div>
+  <div class="ab-row"><span class="k">版本</span><span class="v" id="ab-ver">…</span></div>
+  <div class="ab-row"><span class="k">星标</span><span class="v" id="ab-stars">…</span></div>
+  <div class="ab-row"><span class="k">Fork</span><span class="v" id="ab-forks">…</span></div>
+  <div class="ab-row"><span class="k">Issues</span><span class="v" id="ab-issues">…</span></div>
+  <div class="ab-row"><span class="k">语言 / 许可证</span><span class="v" id="ab-meta">…</span></div>
+  <div class="ab-git" id="ab-desc"></div>
+  <div class="ab-git" id="ab-git-row">仓库：<a href="#" id="ab-repo-link">github.com/A8Chann/dsh_desktop</a></div>
+  <div class="actions">
+    <button id="ab-close">关闭</button>
+    <button id="ab-git" class="primary">前往 GitHub</button>
   </div>
 </div>
 
@@ -612,7 +646,8 @@
     close: document.getElementById('popup-close'),
     dl: document.getElementById('popup-downloads'),
     settings: document.getElementById('popup-settings'),
-    env: document.getElementById('popup-env')
+    env: document.getElementById('popup-env'),
+    about: document.getElementById('popup-about')
   };
   var CTX = document.getElementById('dl-ctx');
   // 弹窗卡片矩形实时上报（内容页局部模糊幕布定位用）：
@@ -624,6 +659,8 @@
   function reportPopupRect(name) {
     var el = POPUP[name];
     if (!el) return;
+    // 居中模态（close）用全屏幕布：offsetLeft/Top 不含 translate(-50%,-50%)
+    // 的偏移，局部矩形会错位；全屏则永远正确。右上角卡片（含 about）用局部幕布。
     var full = (name === 'close');
     try {
       // 用布局值（offset*）而不是 getBoundingClientRect：入场动画期间 transform
@@ -666,12 +703,59 @@
     // loadDlSettings() 只在页面初始化时执行一次，保存/取消由面板内按钮处理。
     if (name === 'env' && on) { resetEnvForms(); if (envSwitching) showEnvSwitchOverlay(envSwitching); loadEnv(); }
     if (name === 'env' && !on) { resetEnvForms(); hideEnvConfirm(); }
+    // 关于弹窗：显示时拉取程序/git 信息（编译期嵌入，GET /about）
+    if (name === 'about' && on) loadAboutData();
   };
+
+  // ── 关于弹窗（程序 + git 信息；数据 GET /about 拉取，Rust 编译期嵌入 git 信息）──
+  // 走 overlay 弹窗体系（同菜单：外壳层扩展覆盖全窗、z-index、点外部关闭），
+  // 显示状态由 Rust 经 __dshdShowPopup('about', on) 驱动。
+  var aboutEl = document.getElementById('popup-about');
+  function loadAboutData() {
+    fetch(HTTP + '/about').then(function (r) { return r.json(); }).then(function (a) {
+      if (!aboutEl) return;
+      var ver = document.getElementById('ab-ver');
+      var stars = document.getElementById('ab-stars');
+      var forks = document.getElementById('ab-forks');
+      var issues = document.getElementById('ab-issues');
+      var meta = document.getElementById('ab-meta');
+      var desc = document.getElementById('ab-desc');
+      var link = document.getElementById('ab-repo-link');
+      var version = document.getElementById('ab-version');
+      if (ver) ver.textContent = a.version || '?';
+      if (version) version.textContent = 'v' + (a.version || '?');
+      if (link && a.repoUrl) link.href = a.repoUrl;
+      // 仓库信息实时拉取（/about 端点在 Rust 侧请求 GitHub API）
+      if (!a.repoError) {
+        if (stars) stars.textContent = (a.repoStars != null) ? ('★ ' + a.repoStars) : '—';
+        if (forks) forks.textContent = (a.repoForks != null) ? ('⑂ ' + a.repoForks) : '—';
+        if (issues) issues.textContent = (a.repoIssues != null) ? ('◉ ' + a.repoIssues) : '—';
+        if (meta) {
+          var lang = a.repoLanguage || '—';
+          var lic = (a.repoLicense && a.repoLicense !== 'NOASSERTION') ? a.repoLicense : '—';
+          meta.textContent = lang + ' / ' + lic;
+        }
+        if (desc && a.repoDescription) desc.textContent = a.repoDescription;
+      } else {
+        if (stars) stars.textContent = '加载失败';
+        if (forks) forks.textContent = '加载失败';
+        if (issues) issues.textContent = '加载失败';
+        if (meta) meta.textContent = '— / —';
+        if (desc) desc.textContent = '仓库信息获取失败（无网络，或 GitHub API 限流）';
+      }
+    }).catch(function () {});
+  }
+  // about 按钮：关闭走 overlay toggle（Rust 状态一致）；前往 git 直接打开仓库
+  var abCloseBtn = document.getElementById('ab-close');
+  var abGitBtn = document.getElementById('ab-git');
+  if (abCloseBtn) abCloseBtn.addEventListener('click', function () { act('popup-about-hide'); });
+  if (abGitBtn) abGitBtn.addEventListener('click', function () { act('browser-git'); });
 
   // ── 状态 ──
   var dot = document.getElementById('dot');
   var label = document.getElementById('status-label');
   var menuStatus = document.getElementById('menu-status');
+  var envItem = document.getElementById('menu-env-item');
   window.__dshdStatus = function (s) {
     var cls = 'warn', text = '后端未就绪';
     switch (s.state) {
@@ -686,9 +770,21 @@
     dot.className = 'dot ' + cls;
     label.textContent = text;
     if (menuStatus) menuStatus.textContent = text;
+    // 外部接管实例（owned=false）无法由桌面端管理环境：菜单项变「接管外部实例」，
+    // 点击后将外部实例转正为桌面端自有（不杀），见 controls.rs 的 env-enable action
+    var external = (s.state === 'external' && s.owned === false);
+    envExternal = external;
+    if (envItem) {
+      var t = envItem.querySelector('span');
+      if (t) t.textContent = external ? '接管外部实例' : '环境管理';
+      var k = envItem.querySelector('.kbd');
+      if (k) k.textContent = external ? '启用环境管理' : '版本 · Profile';
+    }
     // 环境管理切换的完成回调（事件驱动，不轮询）
     if (window.__dshdEnvOnStatus) window.__dshdEnvOnStatus(s);
   };
+  // 外部接管标志（菜单点击分支用）：__dshdStatus 回推后才有值
+  var envExternal = false;
 
   // ── 标题栏按钮 ──
   var sw = document.getElementById('sw');
@@ -723,16 +819,13 @@
     act('toggle-deepseek');
   });
 
-  // 互斥：打开菜单先关下载/设置/环境；反之亦然
+  // 互斥：打开菜单/下载时**只发目标动作**——Rust `overlay_toggle` 打开时会互斥关闭其它弹层
+  // （Rust flag 为真相源）。不再先发一串 toggle 关其它：多个 act() 是异步 HTTP 请求，
+  // 乱序到达时第二个 toggle 会把已关的弹层**重新打开**（正是「点下载再点菜单」竞态的根因）。
   document.getElementById('menu-btn').addEventListener('click', function () {
-    if (POPUP.dl.classList.contains('visible')) act('popup-dl');
-    if (POPUP.settings.classList.contains('visible')) act('popup-dl-settings');
-    if (POPUP.env.classList.contains('visible')) act('popup-env');
     act('popup-menu');
   });
   dlBtn.addEventListener('click', function () {
-    if (POPUP.menu.classList.contains('visible')) act('popup-menu');
-    if (POPUP.env.classList.contains('visible')) act('popup-env');
     act('popup-dl');
   });
   document.getElementById('min-btn').addEventListener('click', function () { act('min'); });
@@ -743,9 +836,25 @@
   document.querySelectorAll('#popup-menu .item').forEach(function (it) {
     it.addEventListener('click', function () {
       var a = it.getAttribute('data-act');
-      if (a === 'dl') { act('popup-menu'); act('popup-dl'); return; }
-      if (a === 'dl-settings') { act('popup-menu'); act('popup-dl-settings'); return; }
-      if (a === 'env') { act('popup-menu'); act('popup-env'); return; }
+      // 弹窗动作：只发目标（Rust overlay_toggle 互斥会自动关闭菜单），
+      // 避免「act('popup-menu') + act('popup-dl')」双请求乱序把菜单重开
+      if (a === 'dl') { act('popup-dl'); return; }
+      if (a === 'dl-settings') { act('popup-dl-settings'); return; }
+      if (a === 'env') {
+        if (envExternal) {
+          // 外部接管实例：点击 = 执行「启用环境管理」（非弹窗动作，需手动关菜单）
+          act('env-enable');
+          act('popup-menu');
+        } else {
+          act('popup-env');
+        }
+        return;
+      }
+      if (a === 'about') {
+        act('about');
+        return;
+      }
+      // 普通动作（重启/刷新/浏览器/退出等）：执行 + 关菜单
       act(a);
       act('popup-menu');
     });

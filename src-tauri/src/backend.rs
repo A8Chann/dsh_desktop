@@ -75,6 +75,9 @@ pub struct Backend {
     stop: Arc<AtomicBool>,
     thread: Arc<Mutex<Option<JoinHandle<()>>>>,
     pub log: Arc<Logger>,
+    /// 「启用环境管理」标志：外部接管实例转为桌面端自有（owned=true，不杀）。
+    /// 置位后 spawn_own 探测到外部 dsh 时不再发布 external，而是标记为自有实例。
+    pub turn_own: Arc<AtomicBool>,
 }
 
 const RETRY_DELAYS_SEC: [u64; 6] = [1, 2, 4, 8, 15, 30];
@@ -96,6 +99,7 @@ impl Backend {
             stop: Arc::new(AtomicBool::new(false)),
             thread: Arc::new(Mutex::new(None)),
             log,
+            turn_own: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -148,7 +152,8 @@ impl Backend {
         let status = self.status.clone();
         let stop = self.stop.clone();
         let log = self.log.clone();
-        let handle = std::thread::spawn(move || run_loop(app, settings, status, stop, log));
+        let turn_own = self.turn_own.clone();
+        let handle = std::thread::spawn(move || run_loop(app, settings, status, stop, log, turn_own));
         *self.thread.lock().unwrap() = Some(handle);
     }
 
@@ -179,6 +184,11 @@ impl Backend {
                     // 刷新 DSH 内容 WebView（不是主窗；子 WebView 用 get_webview("dsh")）
                     if let Some(w) = app.get_webview("dsh") {
                         let _ = w.eval("location.reload()");
+                    }
+                    // reload 会销毁弹窗背景幕布（内容页 DOM）→ 若弹窗仍开着（如环境管理
+                    // 面板未关闭），自动重推幕布恢复背景模糊（轮询等页面就绪）
+                    if let Some(s) = app.try_state::<Arc<AppState>>() {
+                        crate::controls::popup_backdrop_repush_after_reload(&app, &s);
                     }
                     crate::controls::hide_switch_loading(&app);
                     return;
@@ -305,6 +315,7 @@ fn spawn_own(
     status: Arc<Mutex<BackendStatus>>,
     stop: Arc<AtomicBool>,
     log: Arc<Logger>,
+    turn_own: Arc<AtomicBool>,
 ) {
     // 1) 解析 node/dsh
     let (node_bin, dsh_bin) = {
@@ -377,8 +388,23 @@ fn spawn_own(
         let (ok, is_dsh) = probe_port(port, 2500);
         if ok && is_dsh {
             let pid = find_pid_by_port(port).unwrap_or(0);
-            log.info(&format!("[backend] 接管外部实例 pid={} 端口={}（退出时不杀）", pid, port));
-            adopt_external(app.clone(), port, pid, status.clone(), stop.clone());
+            let own = turn_own.load(Ordering::SeqCst);
+            if own {
+                log.info(&format!(
+                    "[backend] 外部实例转自有 pid={} 端口={}（启用环境管理，不杀）",
+                    pid, port
+                ));
+            } else {
+                log.info(&format!("[backend] 接管外部实例 pid={} 端口={}（退出时不杀）", pid, port));
+            }
+            adopt_external(
+                app.clone(),
+                port,
+                pid,
+                status.clone(),
+                stop.clone(),
+                turn_own.clone(),
+            );
             return;
         }
         if ok && !is_dsh {
@@ -537,19 +563,22 @@ fn adopt_external(
     pid: u32,
     status: Arc<Mutex<BackendStatus>>,
     stop: Arc<AtomicBool>,
+    turn_own: Arc<AtomicBool>,
 ) {
+    let own = turn_own.load(Ordering::SeqCst);
     let url = format!("http://127.0.0.1:{}", port);
     let st = BackendStatus {
-        state: "external".to_string(),
+        state: if own { "running" } else { "external" }.to_string(),
         url: Some(url.clone()),
         port: Some(port),
         pid: Some(pid),
-        owned: false,
-        ..BackendStatus::new("external")
+        owned: own,
+        ..BackendStatus::new(if own { "running" } else { "external" })
     };
     publish(&app, &status, st);
 
-    // 健康检查：外部实例消失后接管（回落到 spawn 自己的）
+    // 健康检查：外部实例消失后接管（回落到 spawn 自己的）。
+    // own=true（启用环境管理转自有）：外部消失同样回落 spawn（切换版本时由 restart 驱动）。
     let mut fail_streak = 0u32;
     loop {
         if stop.load(Ordering::SeqCst) {
@@ -617,6 +646,7 @@ fn run_loop(
     status: Arc<Mutex<BackendStatus>>,
     stop: Arc<AtomicBool>,
     log: Arc<Logger>,
+    turn_own: Arc<AtomicBool>,
 ) {
     log.info("dsh 后端管理线程启动");
     let mut attempts = 0u32;
@@ -631,6 +661,7 @@ fn run_loop(
             status.clone(),
             stop.clone(),
             log.clone(),
+            turn_own.clone(),
         );
         attempts += 1;
         if attempts > 100 {
