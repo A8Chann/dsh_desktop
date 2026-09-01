@@ -93,6 +93,7 @@ fn main() {
             env_task: Mutex::new(None),
             env_last_error: Mutex::new(None),
             last_popup_shown_ms: AtomicU64::new(0),
+            popup_rect: Mutex::new(None),
             deepseek_loaded: AtomicBool::new(false),
             theme_dsh: Mutex::new(None),
             theme_deepseek: Mutex::new(None),
@@ -248,6 +249,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .initialization_script(controls::theme_bridge_js("dsh"))
         .initialization_script(controls::click_forwarder_js(&token))
         .initialization_script(controls::switch_loading_js())
+        .initialization_script(controls::popup_backdrop_js())
         .on_download(controls::intercept_download);
     window.add_child(dsh, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
 
@@ -261,6 +263,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         )
         .initialization_script(controls::theme_bridge_js("deepseek"))
         .initialization_script(controls::click_forwarder_js(&token))
+        .initialization_script(controls::popup_backdrop_js())
         .on_download(controls::intercept_download);
     let ds_webview = window.add_child(deepseek, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
     let _ = ds_webview.hide();

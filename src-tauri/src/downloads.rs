@@ -54,6 +54,10 @@ struct Inner {
     next_id: AtomicU64,
     flags: Mutex<std::collections::HashMap<u64, (Arc<AtomicBool>, Arc<AtomicBool>)>>, // (cancel, pause)
     last_save: Mutex<Option<Instant>>,
+    /// 已查看标记：最后一个被用户查看过的任务 id（持久化在独立文件，
+    /// 与页面 origin 无关——localStorage 按 origin 隔离，dev/release 模式存储不共享，
+    /// 会导致历史完成任务永远被判为“未查看”，徽标常亮）。
+    seen: Mutex<u64>,
     /// 状态变化通知（外壳层即时刷新徽标/面板）
     notify: Arc<dyn Fn() + Send + Sync>,
 }
@@ -93,6 +97,24 @@ fn persist_path() -> PathBuf {
     crate::settings::settings_dir().join("downloads.json")
 }
 
+fn seen_path() -> PathBuf {
+    crate::settings::settings_dir().join("downloads_seen.txt")
+}
+
+/// 读取已查看标记（缺失/损坏时回到 0 = 全部视为未查看）。
+fn load_seen() -> u64 {
+    std::fs::read_to_string(seen_path())
+        .ok()
+        .and_then(|t| t.trim().parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+/// 写已查看标记（尽力而为，失败不影响主流程）。
+fn save_seen(seen: u64) {
+    let _ = std::fs::create_dir_all(seen_path().parent().unwrap_or(Path::new(".")));
+    let _ = std::fs::write(seen_path(), seen.to_string());
+}
+
 impl Downloads {
     pub fn new(
         log: Arc<Logger>,
@@ -122,12 +144,28 @@ impl Downloads {
             t.speed = 0;
         }
         let max_id = tasks.iter().map(|t| t.id).max().unwrap_or(0);
+        // 历史已完成任务的 id（现状 max_id=20）会被误判为未查看，除非 seen 已覆盖。
+        // 首次迁移：若下载记录里有终态任务，且标记为 0，则先按“已看过的最大 id”初始化，
+        // 避免老用户升级后所有历史任务一起弹“未查看”徽标。
+        let mut seen = load_seen();
+        if seen == 0 {
+            seen = tasks
+                .iter()
+                .filter(|t| t.state != "downloading" && t.state != "paused")
+                .map(|t| t.id)
+                .max()
+                .unwrap_or(0);
+            if seen > 0 {
+                save_seen(seen);
+            }
+        }
         Self {
             inner: Arc::new(Inner {
                 tasks: Mutex::new(tasks),
                 next_id: AtomicU64::new(max_id + 1),
                 flags: Mutex::new(std::collections::HashMap::new()),
                 last_save: Mutex::new(None),
+                seen: Mutex::new(seen),
                 notify,
             }),
             log,
@@ -356,6 +394,28 @@ impl Downloads {
             task.exists = !task.file.is_empty() && std::path::Path::new(&task.file).exists();
         }
         t
+    }
+
+    /// 当前已查看标记（最后一个被查看过的任务 id）。
+    pub fn seen(&self) -> u64 {
+        *self.inner.seen.lock().unwrap()
+    }
+
+    /// 把已查看标记推进到 id（只增不减），并持久化。
+    pub fn mark_seen(&self, id: u64) {
+        let mut s = self.inner.seen.lock().unwrap();
+        if id > *s {
+            *s = id;
+            save_seen(id);
+        }
+    }
+
+    /// 前端一次拉取需要的完整视图：任务列表 + 已查看标记 + 最大 id。
+    /// 结构：{ list: [...], seen: n, maxId: m }
+    pub fn list_view(&self) -> (Vec<DownloadTask>, u64, u64) {
+        let list = self.list();
+        let max_id = list.iter().map(|t| t.id).max().unwrap_or(0);
+        (list, self.seen(), max_id)
     }
 
     /// 删除任务：进行中先取消；移除记录；若文件存在则一并删除。

@@ -42,6 +42,10 @@ pub struct AppState {
     pub env_last_error: Mutex<Option<String>>,
     /// 最近一次弹窗显示时间（毫秒时间戳）：用于弹层守卫（打开瞬间不计为“点外部”）。
     pub last_popup_shown_ms: AtomicU64,
+    /// 当前打开弹窗的卡片矩形（逻辑坐标，相对窗口，含边距余量；None=无弹窗或已关闭）。
+    /// 由 chrome.html 上报（getBoundingClientRect），内容页幕布据此做**局部模糊**：
+    /// 只模糊弹窗背后区域，不整屏。第五元为 full（true=居中模态，全屏模糊）。
+    pub popup_rect: Mutex<Option<(f64, f64, f64, f64, bool)>>,
     /// DeepSeek 内容页是否已完成首次导航（chat.deepseek.com）。
     pub deepseek_loaded: AtomicBool,
     /// 各内容页最近上报的主题色（bg, fg）：切页时按当前显示页取用。
@@ -833,6 +837,20 @@ fn overlay_set(app: &AppHandle, state: &Arc<AppState>, name: &str, on: bool) {
             );
             let _ = c.eval(&js);
         }
+        // 内容页弹窗背景幕布：任一弹层打开 → chrome.html 上报卡片矩形后按矩形**局部模糊**
+        // （同 WebView backdrop-filter 真实生效）；全部关闭 → 隐藏。
+        // 打开时**不预先推 hide**（只清矩形）：hdie 会先于 chrome.html 的矩形上报到达，
+        // 造成"弹窗已出现、幕布延迟闪出"的观感。关闭时推 hide（chrome 不通知关闭）。
+        let any_open = ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close"]
+            .iter()
+            .any(|n| overlay_flag(&state2, n).load(Ordering::SeqCst));
+        if any_open && flag.load(Ordering::SeqCst) {
+            // 打开瞬间先清矩形（避免误用上一个弹窗的矩形），等 chrome.html 上报再显示
+            *state2.popup_rect.lock().unwrap() = None;
+        }
+        if !any_open {
+            popup_backdrop_set(&app2, &state2, false);
+        }
         set_shell_extent(&app2);
     });
 }
@@ -1399,6 +1417,115 @@ pub fn hide_switch_loading(app: &AppHandle) {
     switch_loading(app, false, "");
 }
 
+/// 注入到 DSH/DeepSeek 内容 WebView 的「弹窗背景模糊幕布」脚本。
+/// 弹窗（菜单/下载/设置/环境/退出）本体在外壳层（chrome WebView），与内容页是
+/// 两个独立 WebView——跨 WebView 的 CSS `backdrop-filter` 无效（已知坑）。
+/// 解决：在内容页自身注入幕布（同一 WebView 内 backdrop-filter 真实生效）。
+/// 两种模式：
+///   - 局部（右上角卡片：菜单/下载/设置/环境）：幕布矩形 = 弹窗卡片矩形 + 余量，
+///     只模糊弹窗背后区域，弹窗外保持清晰（类 Windows 11 Flyout）。
+///   - 全屏（退出确认，居中模态）：rect 传窗口尺寸，模糊+压暗整屏。
+/// 注：z-index 低于 switch_loading（切换环境的全屏 loading 需盖住幕布）。
+pub fn popup_backdrop_js() -> String {
+    r##"(function () {
+  if (window.__dshdPopupBackdropInjected) return;
+  window.__dshdPopupBackdropInjected = true;
+  try { new Image().src = 'http://127.0.0.1:19431/log?msg=BACKDROP_JS_INJECTED'; } catch (e) {}
+  var ID = '__dshd_popup_backdrop__';
+  var el = null;
+  var PAD = 0; // 幕布与弹窗卡片完全同尺寸，不再外扩
+  function ensure() {
+    if (el) return;
+    var style = document.createElement('style');
+    style.textContent =
+      '#' + ID + '{position:fixed;z-index:2000000000;pointer-events:none;opacity:0;' +
+      'transform:translateY(-4px) scale(.985);' + // 与外壳层弹窗入场动画同起点
+      'transition:opacity .08s ease,transform .09s ease-out;overflow:hidden;border-radius:12px}' +
+      '#' + ID + '.on{opacity:1;transform:none}' + // 显示即回到最终位置（与弹窗同步到位）
+      '#' + ID + ' .bl{position:absolute;top:0;left:0;right:0;bottom:0;' +
+      'backdrop-filter:blur(13px) saturate(1.15);-webkit-backdrop-filter:blur(13px) saturate(1.15);' +
+      'background:rgba(8,13,28,.16);border-radius:12px}' +
+      '#' + ID + '[hidden]{display:none!important}';
+    document.head.appendChild(style);
+    el = document.createElement('div');
+    el.id = ID;
+    el.hidden = true;
+    el.innerHTML = '<div class="bl"></div>';
+    document.body.appendChild(el);
+  }
+  // rect = {x,y,w,h} 逻辑坐标（相对窗口，含 padding）；full=true 表示全屏模式
+  window.__dshdPopupBackdrop = function (rect, full) {
+    ensure();
+    if (!rect) { el.classList.remove('on'); el.hidden = true; return; }
+    if (full) {
+      el.style.left = '0px'; el.style.top = '0px'; el.style.right = '0px'; el.style.bottom = '0px';
+      el.style.width = ''; el.style.height = ''; el.style.borderRadius = '0'; el.style.boxShadow = 'none';
+      el.querySelector('.bl').style.background = 'rgba(8,13,28,.42)';
+    } else {
+      var x = rect.x - PAD, y = rect.y - PAD, w = rect.w + PAD * 2, h = rect.h + PAD * 2;
+      // 超出视口的部分 clip 掉（弹窗在窗口内，余量可能越界）
+      x = Math.max(0, x); y = Math.max(0, y);
+      el.style.left = x + 'px'; el.style.top = y + 'px';
+      el.style.width = w + 'px'; el.style.height = h + 'px';
+      el.style.right = ''; el.style.bottom = '';
+      el.style.borderRadius = '12px';
+      el.style.boxShadow = 'none';
+      el.querySelector('.bl').style.background = 'rgba(8,13,28,.14)';
+    }
+    el.hidden = false;
+    // 每次显示都从“动画起点”重播入场（opacity 0 + transform 上移缩小 → 就位），
+    // 与外壳层弹窗的入场动画同节奏；先移除 .on 强制回起点，再重排、再添加。
+    el.classList.remove('on');
+    void el.offsetWidth; // 强制重排让 opacity/transform 过渡生效
+    el.classList.add('on');
+  };
+})();"##
+        .to_string()
+}
+
+/// 弹窗幕布开关：任一弹层打开 → 按当前弹窗矩形显示幕布；全部关闭 → 隐藏。
+/// 推送 dsh 与 deepseek 两个内容 WebView（哪个显示就模糊哪个页）。
+pub fn popup_backdrop_set(app: &AppHandle, state: &AppState, any_open: bool) {
+    if !any_open {
+        let js = "window.__dshdPopupBackdrop && window.__dshdPopupBackdrop(null, false);";
+        for name in ["dsh", "deepseek"] {
+            if let Some(w) = app.get_webview(name) {
+                let _ = w.eval(js);
+            }
+        }
+        return;
+    }
+    let rect = state.popup_rect.lock().unwrap().clone();
+    let Some(r) = rect else {
+        // 尚无矩形上报（面板刚打开瞬间）：先藏，等 chrome.html 上报后再显示
+        state.log.info("[backdrop] push hide (no rect yet)");
+        let js = "window.__dshdPopupBackdrop && window.__dshdPopupBackdrop(null, false);";
+        for name in ["dsh", "deepseek"] {
+            if let Some(w) = app.get_webview(name) {
+                let _ = w.eval(js);
+            }
+        }
+        return;
+    };
+    // 内容页从 y=36（标题栏下）开始；弹窗矩形相对窗口，需偏移到内容页坐标
+    let (x, y, w, h, full) = r;
+    let cy = if full { 0.0 } else { (y - 36.0).max(0.0) };
+    state.log.info(&format!(
+        "[backdrop] push rect x={:.0} y={:.0} w={:.0} h={:.0} full={}",
+        x, cy, w, h, full
+    ));
+    let js = format!(
+        "window.__dshdPopupBackdrop && window.__dshdPopupBackdrop({}, {});",
+        format!(r#"{{"x":{},"y":{},"w":{},"h":{}}}"#, x, cy, w, h),
+        if full { "true" } else { "false" }
+    );
+    for name in ["dsh", "deepseek"] {
+        if let Some(w) = app.get_webview(name) {
+            let _ = w.eval(&js);
+        }
+    }
+}
+
 fn spawn_version_add(app: tauri::AppHandle, state: Arc<AppState>, label: String, spec: String) {
     let task = crate::environments::EnvTask {
         kind: "version-add".to_string(),
@@ -1618,7 +1745,7 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                 // 破坏性接口（执行动作 / 改设置）必须带本进程令牌。
                 // 只读接口（状态、主题、列表、图标）放行，便于排障。
                 let authed = q.get("k").map(|v| v == &state.token).unwrap_or(false);
-                let needs_auth = matches!(path.as_str(), "/action" | "/dl-set");
+                let needs_auth = matches!(path.as_str(), "/action" | "/dl-set" | "/popup-rect");
                 if needs_auth && !authed {
                     state.log.warn(&format!(
                         "[http] 拒绝未授权请求 {} name={:?}",
@@ -1679,15 +1806,57 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                         )
                     }
                     ("GET", "/downloads") => {
-                        let list = match app.try_state::<Downloads>() {
-                            Some(dl) => serde_json::to_string(&dl.list())
-                                .unwrap_or_else(|_| "[]".to_string()),
-                            None => "[]".to_string(),
+                        let payload = match app.try_state::<Downloads>() {
+                            Some(dl) => {
+                                let (list, seen, max_id) = dl.list_view();
+                                let obj = serde_json::json!({
+                                    "list": list,
+                                    "seen": seen,
+                                    "maxId": max_id,
+                                });
+                                serde_json::to_string(&obj).unwrap_or_else(|_| "{}".to_string())
+                            }
+                            None => "{}".to_string(),
                         };
                         format!(
                             "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{}",
-                            cors, list
+                            cors, payload
                         )
+                    }
+                    // 下载“已查看标记”推进（Rust 侧持久化，跨 dev/release 与重启稳定）
+                    ("GET", "/downloads-seen") => {
+                        let id: u64 = q.get("id").and_then(|v| v.parse().ok()).unwrap_or(0);
+                        if let Some(dl) = app.try_state::<Downloads>() {
+                            dl.mark_seen(id);
+                        }
+                        format!("HTTP/1.1 200 OK\r\n{}\r\n{{\"ok\":true}}", cors)
+                    }
+                    // 当前弹窗卡片矩形上报（chrome.html getBoundingClientRect，逻辑坐标）：
+                    // 内容页幕布据此只模糊弹窗背后区域（局部模糊，不全屏）。
+                    // 参数：x/y/w/h 截面板矩形；full=1 表示全屏模态（退出确认）；
+                    // 关闭时无需调用——弹层全部关闭由 overlay_set 隐藏幕布。
+                    ("GET", "/popup-rect") => {
+                        let num = |k: &str| -> Option<f64> {
+                            q.get(k).and_then(|v| v.parse::<f64>().ok())
+                        };
+                        let full = q.get("full").map(|v| v == "1").unwrap_or(false);
+                        let rect: Option<(f64, f64, f64, f64)> = match (num("x"), num("y"), num("w"), num("h")) {
+                            (Some(x), Some(y), Some(w), Some(h)) => Some((x, y, w, h)),
+                            _ => None,
+                        };
+                        if let Some(r) = rect {
+                            state.log.info(&format!(
+                                "[popup-rect] 收到矩形 x={:.0} y={:.0} w={:.0} h={:.0} full={}",
+                                r.0, r.1, r.2, r.3, full
+                            ));
+                            *state.popup_rect.lock().unwrap() = Some((r.0, r.1, r.2, r.3, full));
+                            // 立即按新矩形刷新幕布（面板尺寸未知时先隐藏，等上报）
+                            let any_open = ["popup-menu", "popup-downloads", "popup-settings", "popup-env", "popup-close"]
+                                .iter()
+                                .any(|n| overlay_flag(&state, n).load(Ordering::SeqCst));
+                            popup_backdrop_set(&app, &state, any_open);
+                        }
+                        format!("HTTP/1.1 200 OK\r\n{}\r\n{{\"ok\":true}}", cors)
                     }
                     ("GET", "/icon") => {
                         let bytes: &'static [u8] = include_bytes!("../icons/128x128@2x.png");

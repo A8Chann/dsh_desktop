@@ -120,8 +120,21 @@
     border: 1px solid color-mix(in srgb, var(--dshd-fg) 12%, transparent);
     box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
     border-radius: 12px;
+    /* 入场动画：与内容页模糊幕布（约 80~100ms）同节奏进场，弹窗和模糊一起出现，
+       避免“弹窗先出、模糊后出”的割裂感；关闭不播动画（display:none 直接消失）*/
+    animation: dshdPopIn .09s ease-out;
   }
+  /* #popup-close 用 transform: translate(-50%,-50%) 居中，动画不能覆盖它 → 只淡入 */
+  #popup-close { animation: dshdPopInFade .09s ease-out; }
   .popup.visible { display: block; }
+  @keyframes dshdPopIn {
+    from { opacity: 0; transform: translateY(-4px) scale(.985); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes dshdPopInFade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
 
   /* 菜单 */
   #popup-menu { top: 44px; right: 8px; width: 280px; padding: 6px; }
@@ -409,7 +422,7 @@
   <div class="left">
     <img class="icon" id="icon" alt="" draggable="false" />
     <span class="title">DSH Desktop</span>
-    <span class="badge">v2.4.0</span>
+    <span class="badge">v2.5.0</span>
     <span class="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
   </div>
   <div class="right">
@@ -435,7 +448,7 @@
 
 <div class="popup" id="popup-menu">
   <div class="mh">
-    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.4.0</span></div>
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.5.0</span></div>
     <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
   </div>
   <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
@@ -602,11 +615,51 @@
     env: document.getElementById('popup-env')
   };
   var CTX = document.getElementById('dl-ctx');
+  // 弹窗卡片矩形实时上报（内容页局部模糊幕布定位用）：
+  // 打开弹窗时立即上报一次，并用 ResizeObserver 监听卡片尺寸——内容异步加载
+  // （下载列表/环境列表渲染后变高、窗口缩放、面板 max-height 收展等）会改变
+  // 卡片矩形，幕布必须实时跟随，否则只是“打开瞬间的模糊”（上一版的问题）。
+  // 关闭不通知——弹层全部关闭由 Rust overlay_set 统一隐藏幕布。
+  var popupRectRO = null;
+  function reportPopupRect(name) {
+    var el = POPUP[name];
+    if (!el) return;
+    var full = (name === 'close');
+    try {
+      // 用布局值（offset*）而不是 getBoundingClientRect：入场动画期间 transform
+      // （translateY(-4px) scale(.985)）会让 getBoundingClientRect 返回缩小上移的
+      // 中间帧，幕布据此定位会“冻”在偏小偏上的位置（动画结束后不匹配）。
+      // offsetLeft/Top/Width/Height 是 CSS 布局值，不受 transform 影响，恒精确。
+      var l = el.offsetLeft, t = el.offsetTop, w = el.offsetWidth, h = el.offsetHeight;
+      if (w < 1 || h < 1) return; // 尚未布局（display:none 刚切回）→ 等 raf/RO 下一轮
+      var q = 'x=' + Math.round(l) + '&y=' + Math.round(t) +
+              '&w=' + Math.round(w) + '&h=' + Math.round(h);
+      if (full) q += '&full=1';
+      new Image().src = HTTP + '/popup-rect?' + q + '&k=' + (window.__DSHD_K || '');
+    } catch (e) {}
+  }
+  function trackPopupRect(name) {
+    if (popupRectRO) { popupRectRO.disconnect(); popupRectRO = null; }
+    // 首次上报：display 刚切换，布局可能未完成；下一帧（raF）重试一次，通常比
+    // ResizeObserver 首回调更早，尽量消除“弹窗出现后幕布才闪出”的延迟
+    reportPopupRect(name);
+    if (window.requestAnimationFrame) {
+      requestAnimationFrame(function () { reportPopupRect(name); });
+    }
+    var el = POPUP[name];
+    if (!el || window.ResizeObserver === undefined) return;
+    popupRectRO = new ResizeObserver(function () { reportPopupRect(name); });
+    try { popupRectRO.observe(el); } catch (e) {}
+  }
+  function untrackPopupRect() {
+    if (popupRectRO) { popupRectRO.disconnect(); popupRectRO = null; }
+  }
   window.__dshdShowPopup = function (name, on) {
     var el = POPUP[name];
     if (!el) return;
     el.classList.toggle('visible', !!on);
     if (name === 'dl' && on) { dlSeenEpoch = dlMaxId; dlSaveSeen(); }
+    if (on) trackPopupRect(name); else untrackPopupRect();
     // 面板关闭时复位其内部模态，否则下次打开会糊着一层遮罩/右键菜单
     if (name === 'dl' && !on) { hideDelConfirm(); hideCtx(); }
     // 设置打开时不重新从磁盘加载：保留上次面板里的实时值，避免一打开就被“还原”。
@@ -707,10 +760,14 @@
   var dlList = document.getElementById('dl-list');
   var dlEmpty = document.getElementById('dl-empty');
   var DL_STATE = { downloading: '下载中', paused: '已暂停', done: '已完成', error: '失败' };
+  // 已查看标记：由 Rust 侧持久化（/downloads 返回 seen，/downloads-seen 推进），
+  // 不再用 localStorage——它按页面 origin 隔离，dev(http://127.0.0.1:1430) 与
+  // release(tauri://localhost) 存储不共享，历史完成项会永远误报“未查看”。
   var dlSeenEpoch = -1, dlMaxId = 0, dlSettings = { dir: '', ask: false, autoShow: true, tint: 18, popTint: 55 };
-  // 已查看标记持久化：重启后不把历史完成项误报为“未查看”
-  function dlSaveSeen() { try { localStorage.setItem('dlSeenEpoch', String(dlSeenEpoch)); } catch (e) {} }
-  try { var _se = parseInt(localStorage.getItem('dlSeenEpoch') || '-1', 10); if (!isNaN(_se)) dlSeenEpoch = _se; } catch (e) {}
+  // 推进已查看标记（Rust 侧持久化，重启/跨模式不丢）；本地同步先推，失败也无碍
+  function dlSaveSeen() {
+    try { fetch(HTTP + '/downloads-seen?id=' + dlSeenEpoch).catch(function () {}); } catch (e) {}
+  }
   var ctxId = null;
   var dlById = {}; // id → 任务（删除确认用）
   var dlConfirmId = null;
@@ -1368,11 +1425,13 @@
     if (dlPollBusy) { dlDirty = true; return; } // 正在刷新：标记脏，等待后补一次
     dlPollBusy = true;
     dlDirty = false;
-    fetch(HTTP + '/downloads').then(function (r) { return r.json(); }).then(function (list) {
+    fetch(HTTP + '/downloads').then(function (r) { return r.json(); }).then(function (data) {
+      var list = data.list || [];
+      if (typeof data.seen === 'number') dlSeenEpoch = Math.max(dlSeenEpoch, data.seen);
       var wantOpen = false; // 本轮是否需要请求打开下载面板（至多一次）
       refreshDlPauseAll(list);
       renderDl(list);
-      dlMaxId = list.reduce(function (m, t) { return Math.max(m, t.id); }, 0);
+      dlMaxId = data.maxId != null ? data.maxId : list.reduce(function (m, t) { return Math.max(m, t.id); }, 0);
       var active = list.filter(function (t) { return t.state === 'downloading' || t.state === 'paused'; });
       var activePct = 0;
       if (active.length) {
@@ -1434,7 +1493,7 @@
       });
       if (wantOpen) act('popup-dl');
       list.forEach(function (t) { knownIds[t.id] = true; });
-      // 面板开着时，新完成的任务应直接算“已查看”，否则绿环徽标一直亮到关掉面板才消
+      // 面板开着时，新完成的任务应直接算“已查看”，否则绿色环徽标一直亮到面板关掉才消
       if (POPUP.dl.classList.contains('visible') && dlMaxId > dlSeenEpoch) {
         dlSeenEpoch = dlMaxId;
         dlSaveSeen();

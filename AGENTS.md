@@ -2,9 +2,21 @@
 
 DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GUI，自动拉起后端、自绘标题栏、托盘、本地 HTTP 控制服务。以下是从历次开发/排障中沉淀的通用逻辑与约定。
 
+## 开发环境（tauri dev 快速迭代，用户首选）
+
+- **日常开发/迭代一律用 `npx --yes @tauri-apps/cli@latest dev`（项目根运行），不要每次 `cargo build --release`**——后者是发布打包流程，只在发版时用（用户 2026-09-01 明确：改一次东西就打一次包"怎么行"）。
+- 工作方式：
+  - debug 编译（首次约 1~2 分钟拉 CLI + 全量编译；之后增量编译更快）；
+  - `Watching D:\HTML\DSH_Desktop\src-tauri for changes...` 监视 Rust 源码，**保存 `.rs` 自动重编译 + 重启应用**；
+  - 前端静态文件（`src-tauri/frontend/*.html`）dev 模式**从磁盘直接加载**，改完**刷新窗口页即生效**（无需编译）。
+- 产物：`src-tauri/target/debug/dsh-desktop.exe`（debug 版，体量/性能与 release 不同，仅开发用）。
+- 验证接口与 release 一样：`http://127.0.0.1:19431/status`；后端仍会接管外部 dsh 实例（`probe_port` 修复后 401 认证的 dsh 也能正确识别）。
+- 前置：registry 已配 npmmirror（工作区 `.npmrc`）；tauri CLI 走 npx 按需拉取，无需全局安装。
+- 进程管理：tauri dev 是长驻进程（后台 job），**保持运行即开发环境活跃**；停掉（Ctrl+C/退出）则 dev 环境停了，重跑上面命令即可。
+
 ## 构建与发布
 
-- 构建：`cd src-tauri && cargo build --release`（产物 `src-tauri/target/release/dsh-desktop.exe`）。
+- 构建（仅发版打包）：`cd src-tauri && cargo build --release`（产物 `src-tauri/target/release/dsh-desktop.exe`）。
 - 构建需 `danger-full-access`：cargo 要访问工作区外的 `~/.cargo` 缓存、rustc/link 工具链与 Temp 目录；产物路径本身在工作区内。
 - 发布：把 release exe 复制为 `dist/DSH-Desktop-<version>-tauri.exe`。
 - **不要把 exe 复制到用户桌面**——桌面部署由用户自己完成，助手只更新 dist。

@@ -147,11 +147,21 @@ pub fn probe_port(port: u16, timeout_ms: u64) -> (bool, bool) {
             }
         }
     }
-    let ok = buf.to_ascii_lowercase().contains("200 ok")
-        || buf.contains("<!doctype")
-        || buf.contains("<html")
-        || buf.contains("__DSH_BOOT__");
-    (ok, buf.contains("__DSH_BOOT__"))
+    // 判定「端口有服务」与「是否 dsh 实例」。
+    // 关键坑：dsh web 在需要认证时对 `/` 返回 `HTTP/1.1 401 Unauthorized`（text/plain，
+    // 体为 `dsh web authentication required; …`），而非 200/渲染页。旧的判定只认
+    // `200 ok`/`<!doctype>`/`<html`/`__DSH_BOOT__`，会把活着的 dsh 实例误判为「端口空闲」，
+    // 导致后端管理线程不走 adopt_external 接管，反而用同一端口去 spawn 自己的后端而
+    // EADDRINUSE（实测：就是 DSH Desktop 后端「dsh 启动失败/重试」的根因）。
+    let lower = buf.to_ascii_lowercase();
+    let has_http = lower.contains("http/1.1 ") || lower.contains("http/1.0 ");
+    let page = lower.contains("<!doctype") || lower.contains("<html");
+    let ok = has_http || page;
+    // dsh 签名：已认证页的 boot 标记，或 dsh web 认证/专属文本（未认证时为 401）。
+    let is_dsh = lower.contains("__dsh_boot__")
+        || lower.contains("dsh web")
+        || lower.contains("dsh-app-boot");
+    (ok, is_dsh)
 }
 
 /// taskkill 杀进程树（Windows）。返回是否成功（taskkill 退出码 0）。
