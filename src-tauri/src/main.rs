@@ -57,6 +57,18 @@ fn main() {
             .plugin(tauri_plugin_opener::init()),
     )
     .invoke_handler(tauri::generate_handler![controls::dsh_action, controls::get_backend_status])
+    // 标题栏右键原生菜单（/ctl titlebar-menu 弹出）的菜单项事件 → 复用窗口控制 action
+    .on_menu_event(|app, event| {
+        let id = event.id.as_ref();
+        if matches!(
+            id,
+            "win-restore" | "drag" | "win-resize" | "min" | "max" | "close" | "inspect"
+        ) {
+            if let Some(state) = app.try_state::<Arc<AppState>>() {
+                controls::run_action(app, &state, id);
+            }
+        }
+    })
     // 拦截窗口关闭：弹「退出 / 缩小到托盘」选择框（独立弹窗）；已选退出则放行
     .on_window_event(|window, event| match event {
         tauri::WindowEvent::CloseRequested { api, .. } => {

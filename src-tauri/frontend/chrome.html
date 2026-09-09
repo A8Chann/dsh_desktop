@@ -440,7 +440,7 @@
   <div class="left">
     <img class="icon" id="icon" alt="" draggable="false" />
     <span class="title">DSH Desktop</span>
-    <span class="badge">v2.6.0</span>
+    <span class="badge">v2.7.0</span>
     <span class="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
   </div>
   <div class="right">
@@ -466,7 +466,7 @@
 
 <div class="popup" id="popup-menu">
   <div class="mh">
-    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.6.0</span></div>
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.7.0</span></div>
     <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
   </div>
   <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
@@ -1136,6 +1136,21 @@
     if (e.key === 'Escape') hideCtx();
   });
 
+  // ── 标题栏右键：调 Rust 弹「原生系统菜单」（还原/移动/大小/最小化/最大化/关闭 + 检查）
+  //    用原生菜单而非 DOM：chrome WebView 平时只盖 36px，DOM 菜单会超出被裁。
+  document.getElementById('bar').addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    act('titlebar-menu');
+  });
+
+  // 标题栏 F5 = 刷新内容页（禁止刷新标题栏自身）
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'F5') {
+      e.preventDefault();
+      act('reload-visible'); // Rust：reload 当前显示的内容 WebView
+    }
+  });
+
   // 设置：外观（标题栏透明度 + 弹窗透明度）+ 下载
   var setTint = document.getElementById('set-tint');
   var setTintVal = document.getElementById('set-tint-val');
@@ -1675,6 +1690,11 @@
       window.__TAURI__.event.listen('backend-status', function (e) { if (e.payload) window.__dshdStatus(e.payload); });
     }
   } catch (e) {}
+
+  // F5 重载后立即恢复主题：向 Rust 取缓存主题并应用，避免标题栏闪回默认深蓝黑。
+  fetch(HTTP + '/theme').then(function (r) { return r.json(); })
+    .then(function (t) { if (t && t.bg && window.__dshdTheme) window.__dshdTheme(t); })
+    .catch(function () {});
 
   var iconEl = document.getElementById('icon');
   iconEl.onerror = function () {

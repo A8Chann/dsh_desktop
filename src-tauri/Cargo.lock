@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "dsh-desktop"
-version = "2.6.0"
+version = "2.7.0"
 dependencies = [
  "base64 0.22.1",
  "dirs",
@@ -843,6 +843,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
+ "tauri-runtime",
  "tauri-winrt-notification",
  "ureq",
 ]

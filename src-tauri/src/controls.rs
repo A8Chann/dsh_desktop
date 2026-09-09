@@ -892,33 +892,34 @@ pub fn theme_bridge_js(src: &str) -> String {
   var last = '';
   function read() {
     try {
-      var el = null, i;
-      var cand = [document.documentElement, document.body];
-      for (i = 0; i < cand.length; i++) {
-        if (!cand[i]) continue;
-        var cs = getComputedStyle(cand[i]);
-        var b = cs.backgroundColor;
-        if (b && b !== 'rgba(0, 0, 0, 0)' && b !== 'transparent') { el = cand[i]; break; }
-      }
-      // 官方默认皮肤下 html/body 背景透明（底色由 #root / AppFrame 等面板绘制），
-      // 继续向下采样真实渲染色，避免落到硬编码回退值把标题栏带黑。
-      if (!el) {
-        var deep = [document.querySelector('[data-dsh-frame]'), document.querySelector('#root'), document.querySelector('[data-dsh-app]')];
-        for (i = 0; i < deep.length; i++) {
-          if (!deep[i]) continue;
-          var dcs = getComputedStyle(deep[i]);
-          var db = dcs.backgroundColor;
-          if (db && db !== 'rgba(0, 0, 0, 0)' && db !== 'transparent') { el = deep[i]; break; }
-        }
-      }
-      var bg = el ? getComputedStyle(el).backgroundColor : '';
-      // 暗色判定：dsh 页有 data-ds-dark-theme（无属性 = 亮色）；DeepSeek 页兜底跟系统主题
+      // 暗色判定：html 或 body 任一有 data-ds-dark-theme（无属性 = 亮色）；DeepSeek 页兜底跟系统主题
       var dark = false;
       if (document.body && document.body.hasAttribute('data-ds-dark-theme')) dark = true;
+      else if (document.documentElement && document.documentElement.hasAttribute('data-ds-dark-theme')) dark = true;
       else if ('__SRC__' !== 'dsh') {
         dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
       }
-      if (!bg) bg = dark ? '#0b1220' : '#ffffff';
+      var bg = '';
+      // 侧边栏是真实渲染的主题面板（--dsw-specific-sidebar-fill 跟随明暗），
+      // 鲸鱼皮肤下 body/html 背景透明，采侧边栏最可靠。
+      var sb = document.querySelector('[data-pane="sidebar"]');
+      if (sb) {
+        var sbBg = getComputedStyle(sb).backgroundColor;
+        if (sbBg && sbBg !== 'rgba(0, 0, 0, 0)' && sbBg !== 'transparent') bg = sbBg;
+      }
+      // 其次 meta[name=theme-color]（不透明时才可信）。
+      if (!bg) {
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta && meta.content) {
+          var mc = meta.content.trim();
+          if (mc && mc !== 'transparent' && !/^rgba\(0,\s*0,\s*0,\s*0\)$/i.test(mc) && mc !== 'none') bg = mc;
+        }
+      }
+      // 最后兜底：按 dark 标志用主题基色（浅 #e8ecf5 / 深 #101624）。
+      if (!bg) bg = dark ? '#101624' : '#e8ecf5';
+      // 去掉 alpha：标题栏自身用 --dshd-tint 浓度混合，带 alpha 会叠乘导致色调过淡、偏灰。
+      var am = bg.match(/^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[^)]+\)$/i);
+      if (am) bg = 'rgb(' + am[1] + ', ' + am[2] + ', ' + am[3] + ')';
       // 前景色按背景亮度推导，不取页面 body 的 color：外部页（如 chat.deepseek.com）
       // 的 body color 可能是链接紫等与标题栏无关的值，直接套用会让标题栏文字失调。
       var m = bg.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
@@ -936,10 +937,13 @@ pub fn theme_bridge_js(src: &str) -> String {
   window.addEventListener('load', send);
   function startObs() {
     var mo = new MutationObserver(send);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-ds-dark-theme'] });
     try {
       if (document.body) mo.observe(document.body, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-ds-dark-theme'] });
     } catch (e) {}
+    // 兜底轮询：某些切换路径 MutationObserver 可能漏触发，1s 轻量 diff（值变了才上报），
+    // 保证切深/切浅都能自动跟随，无需手动 F5。
+    setInterval(send, 1000);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startObs);
   else startObs();
@@ -1120,6 +1124,84 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
             });
             true
         }
+        // 标题栏右键菜单：还原（最大化时取消最大化）
+        "win-restore" => {
+            let app2 = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(w) = app2.get_window("main") {
+                    if w.is_maximized().unwrap_or(false) {
+                        let _ = w.unmaximize();
+                    }
+                }
+            });
+            true
+        }
+        // 标题栏右键菜单：大小（进入调整窗口尺寸拖拽）
+        "win-resize" => {
+            let app2 = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(w) = app2.get_window("main") {
+                    let _ = w.start_resize_dragging(tauri_runtime::ResizeDirection::SouthEast);
+                }
+            });
+            true
+        }
+        // 标题栏右键菜单：检查（打开当前显示内容页的 DevTools）
+        "inspect" => {
+            let app2 = app.clone();
+            let state2 = state.clone();
+            let _ = app.run_on_main_thread(move || {
+                let current = if state2.deepseek_shown.load(Ordering::SeqCst) {
+                    "deepseek"
+                } else {
+                    "dsh"
+                };
+                if let Some(w) = app2.get_webview(current) {
+                    let _ = w.open_devtools();
+                }
+            });
+            true
+        }
+        // 标题栏右键：弹「原生系统菜单」（还原/移动/大小/最小化/最大化/关闭 + 检查）。
+        // 用原生菜单而非 DOM：chrome WebView 平时只盖 36px，DOM 菜单会被裁掉。
+        "titlebar-menu" => {
+            use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
+            use tauri::{PhysicalPosition, Position};
+            let app2 = app.clone();
+            let state2 = state.clone();
+            let _ = app.run_on_main_thread(move || {
+                let Some(win) = app2.get_window("main") else { return };
+                let Ok(cursor) = win.cursor_position() else { return };
+                let Ok(origin) = win.outer_position() else { return };
+                let px = (cursor.x - origin.x as f64) as i32;
+                let py = (cursor.y - origin.y as f64) as i32;
+                let build = (|| -> Result<(), String> {
+                    let mk = |id: &str, txt: &str| {
+                        MenuItem::with_id(&app2, id, txt, true, None::<&str>).map_err(|e| e.to_string())
+                    };
+                    let r = mk("win-restore", "还原(&R)")?;
+                    let m = mk("drag", "移动(&M)")?;
+                    let s = mk("win-resize", "大小(&S)")?;
+                    let n = mk("min", "最小化(&N)")?;
+                    let x = mk("max", "最大化(&X)")?;
+                    let c = mk("close", "关闭(&C)")?;
+                    let i = mk("inspect", "检查(&I)")?;
+                    let sep = PredefinedMenuItem::separator(&app2).map_err(|e| e.to_string())?;
+                    let menu = Menu::with_items(
+                        &app2,
+                        &[&r, &m, &s, &sep, &n, &x, &sep, &c, &sep, &i],
+                    )
+                    .map_err(|e| e.to_string())?;
+                    menu.popup_at(win, Position::Physical(PhysicalPosition::new(px, py)))
+                        .map_err(|e| e.to_string())?;
+                    Ok(())
+                })();
+                if let Err(e) = build {
+                    state2.log.info(&format!("[titlebar-menu] popup failed: {}", e));
+                }
+            });
+            true
+        }
         "restart" => {
             // 重启与“就绪后自动刷新”已统一在 Backend::restart 内完成
             state.backend.restart("titlebar");
@@ -1130,6 +1212,23 @@ pub fn run_action(app: &tauri::AppHandle, state: &Arc<AppState>, action: &str) -
                 let _ = w.eval("location.reload()");
             }
             // reload 销毁弹窗背景幕布 → 弹窗仍开着时自动重推恢复
+            popup_backdrop_repush_after_reload(app, state);
+            true
+        }
+        // 标题栏 F5：刷新「当前显示」的内容页（dsh 或 deepseek）
+        "reload-visible" => {
+            let app2 = app.clone();
+            let state2 = state.clone();
+            let _ = app.run_on_main_thread(move || {
+                let current = if state2.deepseek_shown.load(Ordering::SeqCst) {
+                    "deepseek"
+                } else {
+                    "dsh"
+                };
+                if let Some(w) = app2.get_webview(current) {
+                    let _ = w.eval("location.reload()");
+                }
+            });
             popup_backdrop_repush_after_reload(app, state);
             true
         }

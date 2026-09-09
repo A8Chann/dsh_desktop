@@ -4,7 +4,7 @@ use crate::controls::AppState;
 use crate::settings::{save_settings, Settings};
 use crate::util::{find_pid_by_port, parse_url_line, probe_port, Logger};
 use serde::Serialize;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -317,13 +317,42 @@ fn spawn_own(
     log: Arc<Logger>,
     turn_own: Arc<AtomicBool>,
 ) {
-    // 1) 解析 node/dsh
-    let (node_bin, dsh_bin) = {
+    // 1) 解析 node/dsh（node 缺失时自动下载安装，见 ensure_node）
+    let mut node_bin = {
         let s = settings.lock().unwrap();
-        (
-            resolve_node(s.node_bin.as_deref()),
-            resolve_dsh(s.dsh_bin.as_deref()),
-        )
+        resolve_node(s.node_bin.as_deref())
+    };
+    // node.exe 不存在（无全局安装、无受管目录）→ 自动下载安装 Node.js
+    if !std::path::Path::new(&node_bin).exists() {
+        let report = |phase: &str, detail: &str, fetched: u32| {
+            let st = BackendStatus {
+                state: "starting".to_string(),
+                install: Some(InstallState {
+                    phase: phase.to_string(),
+                    detail: detail.to_string(),
+                    fetched,
+                }),
+                ..BackendStatus::new("starting")
+            };
+            publish(&app, &status, st);
+        };
+        match ensure_node(&log, &report) {
+            Ok(p) => {
+                log.info(&format!("[node] 自动安装完成：{}", p));
+                let mut s = settings.lock().unwrap();
+                s.node_bin = Some(p.clone());
+                save_settings(&s);
+                node_bin = p;
+            }
+            Err(e) => {
+                fail(app, status, &stop, &format!("未找到 Node.js 且自动安装失败: {}", e));
+                return;
+            }
+        }
+    }
+    let dsh_bin = {
+        let s = settings.lock().unwrap();
+        resolve_dsh(s.dsh_bin.as_deref())
     };
 
     let dsh_bin = match dsh_bin {
@@ -696,6 +725,9 @@ fn resolve_node(explicit: Option<&str>) -> String {
             return p.to_string();
         }
     }
+    if let Some(p) = find_managed_node() {
+        return p;
+    }
     let cands = [
         "C:\\Program Files\\nodejs\\node.exe",
         "C:\\Program Files (x86)\\nodejs\\node.exe",
@@ -715,6 +747,131 @@ fn resolve_node(explicit: Option<&str>) -> String {
         }
     }
     "node.exe".to_string()
+}
+
+/// 受管 Node 目录：`%APPDATA%\DSH Desktop\node\node-vX.Y.Z-win-x64\node.exe`（免安装 zip 解压）。
+fn managed_node_root() -> Option<PathBuf> {
+    std::env::var("APPDATA")
+        .ok()
+        .map(|a| PathBuf::from(a).join("DSH Desktop").join("node"))
+}
+
+/// 在受管目录找已解压的 node.exe（任意版本，取最新）。
+fn find_managed_node() -> Option<String> {
+    let root = managed_node_root()?;
+    let mut found: Option<(u64, PathBuf)> = None;
+    for e in std::fs::read_dir(&root).ok()?.flatten() {
+        let p = e.path();
+        let node = p.join("node.exe");
+        if node.exists() {
+            let m = e.metadata().ok().map(|m| m.modified().ok()).flatten();
+            let t = m
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            if found.as_ref().map(|(ft, _)| t > *ft).unwrap_or(true) {
+                found = Some((t, node));
+            }
+        }
+    }
+    found.map(|(_, p)| p.to_string_lossy().to_string())
+}
+
+/// 自动下载并安装 Node.js（免安装 win-x64 zip → 解压到受管目录）。
+/// `report(phase, detail, fetched)` 持续上报进度（启动页避免像卡死）。
+/// 版本：最新 v22 LTS（npmmirror 与官方 dist 均提供该 tag；失败回退具体版本号）。
+fn ensure_node(
+    log: &Arc<Logger>,
+    report: &dyn Fn(&str, &str, u32),
+) -> Result<String, String> {
+    // 1) 目标版本与镜像源（npmmirror 优先，官方回退）
+    const NODE_VER: &str = "v22.14.0";
+    const CANDIDATES: [(&str, &str, &str); 2] = [
+        ("npmmirror（国内）", "https://npmmirror.com/mirrors/node/", "registry.npmmirror.com"),
+        ("nodejs.org（官方）", "https://nodejs.org/dist/", "nodejs.org"),
+    ];
+    let arch = "x64"; // Windows 桌面版（免安装 zip）无 arm64 官方 zip，统一 x64
+    let file = format!("node-{}-win-{}.zip", NODE_VER, arch);
+
+    // 2) 测速选最快源（TCP 握手近似，4s 超时）
+    report("measuring", "正在测速选择最快的 Node.js 下载源…", 0);
+    let mut scored: Vec<(u64, &str, &str)> = Vec::new();
+    for (name, base, host) in CANDIDATES {
+        if let Some(ms) = registry_latency(&format!("https://{}/", host)) {
+            scored.push((ms, name, base));
+        }
+    }
+    scored.sort_by_key(|(ms, _, _)| *ms);
+    if scored.is_empty() {
+        return Err("无法连接任何 Node.js 下载源".to_string());
+    }
+    let (ms, source_name, base) = scored[0];
+    log.info(&format!("[node] 选用下载源：{}（{}ms）", source_name, ms));
+    let url = format!("{}{}/{}", base, NODE_VER, file);
+
+    // 3) 下载到临时文件（ureq 流式，按块统计字节上报）
+    let root = managed_node_root().ok_or("无法确定 %APPDATA%\\DSH Desktop\\node 目录")?;
+    let _ = std::fs::create_dir_all(&root);
+    let tmp_zip = root.join("node.zip.tmp");
+    report("installing", &format!("正在下载 Node.js {}（{}）…", NODE_VER, file), 0);
+    let resp = ureq::get(&url)
+        .set("user-agent", &format!("DSH-Desktop/{}", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(600))
+        .call()
+        .map_err(|e| format!("下载 Node.js 失败: {}", e))?;
+    let total: u64 = resp
+        .header("content-length")
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
+    let mut reader = resp.into_reader();
+    let mut f = std::fs::File::create(&tmp_zip).map_err(|e| format!("创建临时文件失败: {}", e))?;
+    let mut buf = [0u8; 128 * 1024];
+    let mut downloaded: u64 = 0;
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| format!("下载中断: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        f.write_all(&buf[..n]).map_err(|e| format!("写入失败: {}", e))?;
+        downloaded += n as u64;
+        if total > 0 {
+            report(
+                "installing",
+                &format!("正在下载 Node.js {}… {:.1} / {:.1} MB", NODE_VER, downloaded as f64 / 1048576.0, total as f64 / 1048576.0),
+                (downloaded * 100 / total) as u32,
+            );
+        } else {
+            report("installing", &format!("正在下载 Node.js {}… {:.1} MB", NODE_VER, downloaded as f64 / 1048576.0), 0);
+        }
+    }
+    drop(f);
+
+    // 4) 解压（Windows 自带 powershell Expand-Archive；幂等：已存在则跳过）
+    let target = root.join(format!("node-{}-win-{}", NODE_VER, arch));
+    report("extracting", "正在解压 Node.js…", 100);
+    if !target.join("node.exe").exists() {
+        let ps = format!(
+            "$ErrorActionPreference='Stop'; Expand-Archive -Path '{}' -DestinationPath '{}' -Force;",
+            tmp_zip.to_string_lossy().replace('\\', "\\\\").replace('\'', "''"),
+            root.to_string_lossy().replace('\\', "\\\\").replace('\'', "''")
+        );
+        let ok = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps])
+            .creation_flags(0x08000000)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !ok {
+            let _ = std::fs::remove_file(&tmp_zip);
+            return Err("Node.js 解压失败（Expand-Archive）".to_string());
+        }
+    }
+    let _ = std::fs::remove_file(&tmp_zip);
+    let node_exe = target.join("node.exe");
+    if !node_exe.exists() {
+        return Err(format!("解压完成但未找到 node.exe: {}", node_exe.display()));
+    }
+    Ok(node_exe.to_string_lossy().to_string())
 }
 
 fn resolve_dsh(explicit: Option<&str>) -> Option<String> {
