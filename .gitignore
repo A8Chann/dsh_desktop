@@ -8,8 +8,10 @@ logs/
 .tmp-test/
 issue28/
 .tmp-*.png
-.dsh/
 src-tauri/target/
 # 无头 Edge/CDP 验证截图（scratch，可重新生成）
 .shot/
+# DSH 运行时产物默认不入库；但 .dsh/skills 是随仓库维护的规则/经验存档，必须入库。
+.dsh/*
+!.dsh/skills/
 
