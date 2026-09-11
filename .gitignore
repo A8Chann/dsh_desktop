@@ -10,4 +10,6 @@ issue28/
 .tmp-*.png
 .dsh/
 src-tauri/target/
+# 无头 Edge/CDP 验证截图（scratch，可重新生成）
+.shot/
 

@@ -1,0 +1,760 @@
+[id="root"] {
+  background: none;
+}
+
+a {
+  color: #3c4e92;
+}
+
+a:visited {
+  color: #6a5fa8;
+}
+
+body[data-ds-dark-theme] a {
+  color: #94a8dc;
+}
+
+body[data-ds-dark-theme] a:visited {
+  color: #a58fdc;
+}
+
+:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+[data-pane="sidebar"] {
+  color: var(--dsw-alias-label-primary);
+}
+
+[role="tooltip"] {
+  background: var(--dsw-alias-tooltip-bg);
+  color: var(--dsw-alias-tooltip-fg);
+}
+
+[role="dialog"], [role="dialog"] [class*="navCell"]:not([aria-current="true"]) {
+  color: var(--dsw-alias-label-primary);
+}
+
+button[role="tab"], button[role="tab"]:hover, button[role="tab"]:active, button[role="tab"]:disabled, button[role="tab"]:hover:not(:disabled), button[role="tab"]:active:not(:disabled) {
+  box-shadow: none;
+  text-shadow: none;
+  color: var(--dsw-alias-label-primary);
+  filter: none;
+  opacity: 1;
+  background-color: #0000;
+  background-image: none;
+  border: 0;
+  transform: none;
+}
+
+[data-aionui-explorer-col], [data-aionui-preview-col] {
+  backdrop-filter: blur(12px);
+  contain: paint;
+}
+
+.aionui-dialog, .aionui-menu, .aionui-toast {
+  backdrop-filter: blur(14px);
+}
+
+.aionui-overlay {
+  background: #1c254666;
+}
+
+body[data-ds-dark-theme] .aionui-overlay {
+  background: #0000008c;
+}
+
+button, a, .aionui-btn, .aionui-menu-item, .aionui-explorer-handle, .aionui-preview-handle {
+  transition: background-color .13s, border-color .13s, box-shadow .13s, color .13s, opacity .13s;
+}
+
+::-webkit-scrollbar-thumb {
+  transition: background-color .13s;
+}
+
+a:hover {
+  color: #2c3765;
+  text-decoration: underline;
+}
+
+a:active {
+  color: #222b4d;
+}
+
+body[data-ds-dark-theme] a:hover {
+  color: #b4c3e8;
+}
+
+body[data-ds-dark-theme] a:active {
+  color: #c9d4ef;
+}
+
+button:disabled, .aionui-btn:disabled, .aionui-menu-item-disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.aionui-btn:disabled:hover, .aionui-menu-item-disabled:hover {
+  box-shadow: none;
+  background-color: #0000;
+}
+
+.aionui-explorer-handle, .aionui-preview-handle {
+  background: #d8dfec;
+}
+
+.aionui-explorer-handle:hover, .aionui-preview-handle:hover {
+  background: #7f96d2;
+  box-shadow: 0 0 6px #4a5fa866;
+}
+
+body[data-ds-dark-theme] .aionui-explorer-handle, body[data-ds-dark-theme] .aionui-preview-handle {
+  background: #33406a;
+}
+
+body[data-ds-dark-theme] .aionui-explorer-handle:hover, body[data-ds-dark-theme] .aionui-preview-handle:hover {
+  background: #6276a5;
+  box-shadow: 0 0 6px #7f96d266;
+}
+
+.aionui-floating-expand:hover {
+  background: #e4eaf7;
+  border-color: #647ebf;
+}
+
+.aionui-floating-expand:active {
+  background: #dce3f7;
+}
+
+body[data-ds-dark-theme] .aionui-floating-expand:hover {
+  background: #2c3765;
+  border-color: #647ebf;
+}
+
+body[data-ds-dark-theme] .aionui-floating-expand:active {
+  background: #33417a;
+}
+
+.aionui-collapse-chevron:hover {
+  color: #647ebf;
+}
+
+body[data-ds-dark-theme] .aionui-collapse-chevron:hover {
+  color: #a5b7e2;
+}
+
+.aionui-menu-item:not(.aionui-menu-item-disabled):hover {
+  background: #4a5fa81f;
+}
+
+body[data-ds-dark-theme] .aionui-menu-item:not(.aionui-menu-item-disabled):hover {
+  background: #a0b9eb29;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button, a, .aionui-btn, .aionui-menu-item, .aionui-explorer-handle, .aionui-preview-handle, ::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}
+
+[data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+1), [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+1) {
+  color: #4a5fa8;
+}
+
+[data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+2), [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+2) {
+  color: #2e8e52;
+}
+
+[data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+3), [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+3) {
+  color: #c08a33;
+}
+
+[data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+4), [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+4) {
+  color: #647ebf;
+}
+
+[data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+5), [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+5) {
+  color: #3c4e92;
+}
+
+[data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n), [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n) {
+  color: #58b058;
+}
+
+body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+1), body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+1) {
+  color: #7f96d2;
+}
+
+body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+2), body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+2) {
+  color: #58b058;
+}
+
+body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+3), body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+3) {
+  color: #d9a94f;
+}
+
+body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+4), body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+4) {
+  color: #94a8dc;
+}
+
+body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n+5), body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n+5) {
+  color: #647ebf;
+}
+
+body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="node"]:nth-child(6n), body[data-ds-dark-theme] [data-gitgraph-lanes] > [data-gitgraph-glyph="merge"]:nth-child(6n) {
+  color: #7cc97c;
+}
+
+[data-gitgraph-ref]:not([data-gitgraph-ref-current]) {
+  background: #4a5fa81f;
+  border: 1px solid #2c3a7333;
+}
+
+body[data-ds-dark-theme] [data-gitgraph-ref]:not([data-gitgraph-ref-current]) {
+  background: #a0b9eb24;
+  border-color: #a0b4e633;
+}
+
+div:has( > div > [data-gitgraph-chip]) {
+  --dsw-alias-button-tool-bar-fill: #4a5fa814;
+  --dsw-alias-border-l2: #4a5fa861;
+  --dsw-alias-label-secondary: #2c3765;
+  --dsw-alias-label-tertiary: #647ebf;
+  --dsw-alias-interactive-bg-hover: #4a5fa824;
+  --dsw-alias-interactive-bg-active: #4a5fa833;
+}
+
+body[data-ds-dark-theme] div:has( > div > [data-gitgraph-chip]) {
+  --dsw-alias-button-tool-bar-fill: #a0b9eb14;
+  --dsw-alias-border-l2: #a0b4e661;
+  --dsw-alias-label-secondary: #c9d4ef;
+  --dsw-alias-label-tertiary: #8b9cbc;
+  --dsw-alias-interactive-bg-hover: #a0b9eb24;
+  --dsw-alias-interactive-bg-active: #a0b9eb38;
+}
+
+div:has( > div > [data-gitgraph-chip]) > button[aria-expanded="true"], [data-gitgraph-chip][aria-expanded="true"] {
+  background-color: #4a5fa829;
+}
+
+body[data-ds-dark-theme] div:has( > div > [data-gitgraph-chip]) > button[aria-expanded="true"], body[data-ds-dark-theme] [data-gitgraph-chip][aria-expanded="true"] {
+  background-color: #a0b9eb2e;
+}
+
+[data-phase="active"] [class*="composerSeat"] {
+  background: none !important;
+}
+
+[data-phase="active"] [class*="composerSeat"]:before {
+  content: "";
+  z-index: -1;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  background: linear-gradient(#0000 0, #e8ecf5db 36px);
+  position: absolute;
+  inset: 0;
+}
+
+body[data-ds-dark-theme] [data-phase="active"] [class*="composerSeat"]:before {
+  backdrop-filter: blur(6px);
+  background: linear-gradient(#0000 0, #101624d1 36px);
+}
+
+/* ═══ 气泡基材联动：皮肤中心「背景 → 气泡不透明度 / 气泡模糊程度」═══
+   skin-center 在 body 上写 CSS 变量（与当前是哪张皮肤无关，只要「背景」卡启用就写）：
+     --dsh-skin-bubble-alpha  = 气泡不透明度 / 100（默认 50 → 0.5）
+     --dsh-input-card-blur    = 输入卡片模糊（默认 10px，本文件只作参考，未直接使用）
+   本文件（追加部分）所有气泡底一律改用它换算，不再写死 alpha；系数 K 取
+   「默认 50% 时正好复现原观感」：.5 →×1   .55 →×1.1   .75 →×1.5   .4 →×.8   .45 →×.9
+   （深色主题同系数）。于是拖动设置里的滑块 = 全部气泡一起变：
+   markdown 行底 / 工具行 / 配件胶囊 / 顶部导航栏 / 右栏面板 / 本次产出 … 一处不落。
+   模糊统一走 var(--dsh-skin-bubble-blur, 10px)：该变量皮肤中心**目前没有**，
+   先用兜底值（10px / 12px，等于现有观感）；等「气泡模糊程度」滑块落地后由它接管。
+   ⚠️ 不要在前 262 行（上游原文）里做同类替换——那会让 upstream diff 变脏。 */
+
+
+/* ═══ 正文可读性：markdown 每行白色毛玻璃底 ═══
+   鲸鱼插画背景开启时，正文直接叠在图上对比度不足。
+   为 markdown 的每个块级行（段落/标题/列表项/引用/表格/代码块）
+   叠加半透明白色 + backdrop 模糊，只柔化其背后的插画，文字保持清晰。
+   浅色主题=白底，深色主题=深底。 */
+[class*="markdown"] > p,
+[class*="markdown"] > :where(h1, h2, h3, h4, h5, h6),
+[class*="markdown"] > blockquote {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 6px;
+  padding: 2px 7px;
+  width: fit-content;
+  max-width: 100%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  box-shadow: 0 1px 3px rgba(28, 37, 70, 0.08);
+}
+
+/* 整条列表一块毛玻璃白底；列表标记保持默认「在外」位置，
+   因为 ul/ol 的盒子（含 marker 左侧留白）整体被白底覆盖。 */
+[class*="markdown"] > :where(ul, ol) {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+  padding: 6px 12px 6px 26px;
+  width: fit-content;
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgba(28, 37, 70, 0.08);
+}
+
+[class*="markdown"] > pre {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 6px;
+  padding: 3px 7px;
+  box-shadow: 0 1px 3px rgba(28, 37, 70, 0.08);
+}
+
+body[data-ds-dark-theme] [class*="markdown"] > p,
+body[data-ds-dark-theme] [class*="markdown"] > :where(h1, h2, h3, h4, h5, h6),
+body[data-ds-dark-theme] [class*="markdown"] > blockquote,
+body[data-ds-dark-theme] [class*="markdown"] > :where(ul, ol) {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+body[data-ds-dark-theme] [class*="markdown"] > pre {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+
+/* ═══ 命令行 / 推理行 / 上下文注入行的白底模糊（贴文字宽度） ═══
+   think、命令(bash)、上下文注入、系统提示词等行都是 DisclosureRow
+   （带 data-disclosure-row）。给内层行垫白底模糊并收窄到内容宽度，
+   让数字/圆点与文字一起进入白底；范围限定在对话滚动容器内，避免影响其他面板。 */
+[data-slot="conversation.session"] [data-disclosure-row] {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+  padding: 1px 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+body[data-ds-dark-theme] [data-slot="conversation.session"] [data-disclosure-row] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+/* bash / 工具调用行：wrapper 白底模糊 + 贴文字宽度。
+   这些行走自定义命令渲染器，不一定带 data-disclosure-row，
+   故用稳定的 callRow 子串单独处理。 */
+[class*="callRow"] {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+  padding: 1px 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+body[data-ds-dark-theme] [class*="callRow"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+/* 「深度求索中...」状态行：其背景被 background-clip:text（shimmer）
+   占用，不能直接改 background，改用 ::before 在文字后方垫一层白底，
+   既保住 shimmer 渐变，又提供可读的模糊底。
+   ⚠️ 必须排除 [class*="turnStatusClock"]：内层计时 chip 的类名是
+   `EvIC1a_turnStatusClock`，**包含** turnStatus 子串，否则它也会吃一份 ::before
+   白底 → 计时那段变成「两层背景」（2026-09-10 用户反馈）。 */
+[class*="turnStatus"]:not([class*="turnStatusClock"]) {
+  position: relative;
+  border-radius: 8px;
+}
+
+[class*="turnStatus"]:not([class*="turnStatusClock"])::before {
+  content: "";
+  position: absolute;
+  inset: -5px -10px;
+  z-index: -1;
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+}
+
+body[data-ds-dark-theme] [class*="turnStatus"]:not([class*="turnStatusClock"])::before {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+}
+
+
+/* ═══ markdown 表格：整体一层白底模糊 ═══
+   表格被包裹在 tableScroll 容器里（含 md-table-wide 变体），
+   table 并非 markdown 的直接子级，之前逐格没吃到；
+   改给整个容器垫一层毛玻璃白底，即「整体模糊」。 */
+[class*="markdown"] [class*="tableScroll"] {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 10px;
+  padding: 8px 10px;
+  box-shadow: 0 1px 4px rgba(28, 37, 70, 0.08);
+}
+
+body[data-ds-dark-theme] [class*="markdown"] [class*="tableScroll"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .9));
+}
+
+/* ═══ 回复完成后的操作行（复制 / 反馈 / 重新生成 等）═══
+   位于 [data-turn-tail] 内的 actions 行（MessageIconActions），
+   给整行垫白底模糊，避免图标贴在插画上看不清。 */
+[data-turn-tail] [class*="actions"],
+[data-chat-flow-kind="user"] [class*="actions"],
+[data-chat-flow-kind="steering"] [class*="actions"] {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 10px;
+  padding: 0 8px;
+  width: fit-content;
+}
+
+body[data-ds-dark-theme] [data-turn-tail] [class*="actions"],
+body[data-ds-dark-theme] [data-chat-flow-kind="user"] [class*="actions"],
+body[data-ds-dark-theme] [data-chat-flow-kind="steering"] [class*="actions"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+
+/* ═══ 用户输入气泡：半透明 + 背景模糊 ═══
+   保持现在的靛蓝色 --dsw-specific-bubble，仅加半透明与毛玻璃。 */
+[class*="userStack"] [class*="bubble"] {
+  background: color-mix(in srgb, var(--dsw-specific-bubble) 60%, transparent);
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 12px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 12px)) saturate(1.3);
+}
+
+/* ═══ 输入窗口（提问区）补充背景模糊 ═══
+   composer seat 目前只有半透明白底，补上 backdrop-filter 使其毛玻璃化。 */
+[data-composer-seat] {
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+}
+
+
+/* ═══ 「Go 5h」条（cm-qstrip）：把**外壳层给它加的那层底去掉**（2026-09-10 定稿）═══
+   查证：cost-meter 自己的 CSS 里 `.cm-qstrip` **只有布局**、没有任何 background
+   （`display:flex;flex-wrap:wrap;justify-content:center;width:100%;max-width:…;
+     padding:0 calc(var(--dsh-composer-side-clearance,0px) + 16px)`），
+   里面每个 `cm-qchip` 小胶囊才各自带底（`var(--dsw-alias-bg-layer-2)`）。
+   所以用户看到的「那一整条底」= 皮肤外壳渲染层 accessory 规则刷的不透明底
+   （rgb(243,245,251) + blur，带 !important）→ 这里用高特异性 !important 清掉，
+   让内部小胶囊自己的底露出来。同时撤掉皮肤之前给的 fit-content/内边距，
+   交还插件原生布局（否则尺寸会与官方不一致）。 */
+[data-phase="active"] [data-slot="conversation.input.dock"] > [class*="cm-qstrip"],
+[data-phase="active"] [data-slot="conversation.composer.dock"] > [class*="cm-qstrip"] {
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+/* ═══ dsh-cost-meter / 统计类（第一版方案，2026-09-10 收敛） ═══
+   `cm-qstrip` 见上方规则（清掉外壳底、交还原生布局）。
+   `cm-root`（「本会话 ¥…」）保留这里的宽度/内边距/圆角，底色由下方毛玻璃规则接管。
+   `-NDN2W_root` 保持原样。 */
+[class*="cm-root"],
+[class*="-NDN2W_root"] {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+  padding: 2px 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+body[data-ds-dark-theme] [class*="cm-root"],
+body[data-ds-dark-theme] [class*="-NDN2W_root"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+
+/* ═══ 输入栏下方两行（统计行 / 本会话费用）改成**完全透明**（2026-09-10 用户要求）═══
+   这两行原本的底来自皮肤「外壳渲染层」的 accessory 规则：
+     html[data-dsh-skin] [data-phase="active"] [data-slot="conversation.input.dock"] > *
+     { background: var(--dsh-composer-accessory-bg, var(--dsw-specific-tip, …)) !important;
+       backdrop-filter: blur(…) !important; box-shadow: … }
+   实测解析成**完全不透明**的 rgb(243,245,251) + blur(10px) → 两条实心白条。
+   这里用同款选择器 + 更高特异性 + !important 覆盖：加上皮肤前缀后是 (0,4,1)，
+   压过外壳层的 (0,3,1)（同为 !important 时按特异性取胜）。
+   ⚠️ 用户第一轮说「优化成透明的」，做成全透明后又反馈「需要背景模糊」——
+   所以最终是**毛玻璃**（半透明底 + blur），不是全透明；底色调 **皮肤基色
+   rgb(242,245,250)**（按「配色基准」规则取左侧栏那个色），浓度 .55。
+   「Go 5h」(cm-qstrip) 不在此列，它走上一条「清掉外壳底」的规则。 */
+[data-phase="active"] [data-slot="conversation.input.dock"] > [data-composer-stats],
+[data-phase="active"] [data-slot="conversation.composer.dock"] > [data-composer-stats],
+[data-phase="active"] [data-slot="conversation.input.dock"] > [class*="cm-root"],
+[data-phase="active"] [data-slot="conversation.composer.dock"] > [class*="cm-root"] {
+  background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.1)) !important;
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3) !important;
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3) !important;
+  box-shadow: none !important;
+}
+
+body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.input.dock"] > [data-composer-stats],
+body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.composer.dock"] > [data-composer-stats],
+body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.input.dock"] > [class*="cm-root"],
+body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.composer.dock"] > [class*="cm-root"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.1)) !important;
+}
+/* ═══ 补漏：对话中其余行 / 展开正文的毛玻璃（A+B 全量） ═══
+   排查出的未覆盖行：折叠「过程」行、分隔/汇总行、goal 行、工具摘要行、
+   会话信息行、jobs 任务行、提问条、conversation chips，以及展开的正文
+   （命令输出 / 推理正文 / 上下文注入 body / 系统提示词 body）。
+   ⚠️ 整块**只作用于会话区** `[data-slot="main.conversation"]`（实测：设置面板在它之外，
+   会话正文/输入区都在它之内）。原因：下面这些都是 CSS-module 哈希，跨构建会变、会撞车。
+   撞车实录（用户 2026-09-10 截图）：裸写的 `[class*="lats3W_row"]` 在当前构建里是
+   **设置面板**「对话显示 / 紧凑」那一行的哈希 → 被套上白底 + 8px 圆角 + `width:fit-content`，
+   行宽从 564px 塌成 282px、描述文字被白块盖住。处置：① 删掉该哈希条目；
+   ② 整块加 `main.conversation` 作用域，今后任何哈希再撞到设置面板/侧栏等 UI 都不会受伤。
+   ⚠️ uV2eYG_ 是 composer（输入栏）模块的哈希前缀：uV2eYG_row 是输入框下方那排按钮
+   （+/附件/权限/模型/发送）的容器行，不是会话正文行 —— 早先给它加白底导致该行塌成
+   16px、按钮溢出在白块外；这里继续用 :not() 排除 composer 卡片/输入区。 */
+[data-slot="main.conversation"] [class*="l_V-RG_"],
+[data-slot="main.conversation"] [class*="oRe1gG_row"],
+[data-slot="main.conversation"] [class*="o3BgMG_root"],
+[data-slot="main.conversation"] [class*="o3BgMG_summary"],
+[data-slot="main.conversation"] [class*="CY-8Ka_root"],
+[data-slot="main.conversation"] [class*="CY-8Ka_summary"],
+[data-slot="main.conversation"] [class*="uV2eYG_row"]:not([data-composer-card] *):not([data-composer-seat] *),
+[data-slot="main.conversation"] [class*="QsffPG_row"],
+[data-slot="main.conversation"] [class*="LVzXQa_strip"] {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="l_V-RG_"],
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="oRe1gG_row"],
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="o3BgMG_root"],
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="o3BgMG_summary"],
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="CY-8Ka_root"],
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="CY-8Ka_summary"],
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="uV2eYG_row"]:not([data-composer-card] *):not([data-composer-seat] *),
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="QsffPG_row"],
+body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="LVzXQa_strip"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+
+/* ═══ 「Go 5h」小胶囊（`cm-qchip`）：改成与下方「轮数」行**同一套**底色 + hover ═══
+   起因（用户 2026-09-10）：「这玩意儿跟别的类似的按钮的颜色和 hover 都不一样，
+   照着下面的那个轮数的样式改改」。实测同区域各元素的真实取值（无头 Edge，F5 后）：
+
+     轮数统计行   `bOPqQW_root`（= `[data-composer-stats]`，就是皮肤补丁里那条）
+                  bg rgba(242,245,250,.55)  bf blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3)  radius 12px
+     它里面每颗小药丸 `bOPqQW_pill`  bg 透明 → :hover rgba(74,95,168,.08)
+     本会话行     `cm-root`         bg rgba(242,245,250,.55)  bf blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3)
+     余额/今日    `cm-foot`         bg 透明 → :hover rgba(74,95,168,.08)
+     ← 到这里为止，整个配件区都是「.55 浅色毛玻璃」，hover 一律是插件标准的 8% 靛蓝。
+     唯独 `cm-qchip` 用插件默认的 `--dsw-alias-bg-layer-2`（**0.776 的偏灰实底**），
+     hover 又直接跳到 `--dsw-alias-interactive-bg-hover`（8% 靛蓝，丢掉底色）——
+     既是唯一的"灰盒子"，hover 还会整颗变淡，所以显得格格不入。
+
+   修法（对齐，不发明新颜色）：
+     ① 常态底色 = 轮数行同款 `rgba(242,245,250,.55)` + 同款 blur；
+     ② hover **保留这层底**，再叠一层插件标准的 8% 靛蓝（用 background-image 渐变叠加，
+        而不是把底色换掉）——这样 hover 的"色相变化"与轮数药丸/cm-foot 完全一致，
+        又不会重新变成"变透明"。
+   注：圆角仍用插件原来的 6px（用户只提了颜色与 hover）。 */
+[class*="cm-qchip"] {
+  background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+}
+
+[class*="cm-qchip"]:hover {
+  background-color: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.1));
+  background-image: linear-gradient(rgba(74, 95, 168, 0.08), rgba(74, 95, 168, 0.08));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+}
+
+body[data-ds-dark-theme] [class*="cm-qchip"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.1));
+}
+
+body[data-ds-dark-theme] [class*="cm-qchip"]:hover {
+  background-color: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.1));
+  background-image: linear-gradient(rgba(160, 185, 235, 0.08), rgba(160, 185, 235, 0.08));
+}
+
+
+/* ═══ 输入框里的 @引用小胶囊（ReferenceChip，`dsh-client-ui-conversation`）═══
+   说明：2026-09-10 曾有短暂一版在这里加过常态/hover 底色，**已撤回**——
+   当时把用户反馈的「hover 变透明」误判成了这个元素，实际是上面的 `cm-qchip`。
+   此元素现在**完全沿用插件原样式**：
+     .yAWgPa_chip{background:var(--dsw-alias-interactive-bg-hover);border-radius:6px;
+                  color:var(--dsw-alias-state-business-primary);height:22px;padding:0 6px;
+                  display:inline-flex}
+   插件对它的常态用的是 8% 靛蓝的 `--dsw-alias-interactive-bg-hover`，
+   且**没有任何 `:hover` 规则**（实测移上去 :hover 命中但底色不变）。
+   若以后要让它更显眼，注意**不能用左侧栏那个中性基色**（压在白色输入卡片上≈白、
+   比 8% 靛蓝更看不见），要用它自己的蓝色系加强。 */
+
+/* 展开正文：长文保持整宽（不贴宽度），只加半透明 + 模糊 */
+[class*="_5OnbHa_body"],
+[class*="lcKema_thinkBody"],
+[class*="XrJvXW_body"],
+[data-context-injection-body],
+[data-system-prompt-body] {
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+}
+
+body[data-ds-dark-theme] [class*="_5OnbHa_body"],
+body[data-ds-dark-theme] [class*="lcKema_thinkBody"],
+body[data-ds-dark-theme] [class*="XrJvXW_body"],
+body[data-ds-dark-theme] [data-context-injection-body],
+body[data-ds-dark-theme] [data-system-prompt-body] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+
+/* ═══ 输入栏下方的统计行（StatsPills：N 轮 N 步 · tok/s · 缓存命中）═══
+   皮肤「外壳渲染层」（注入的 <style data-dsh-shell-rendering>，由 skin-center 提供）
+   会把 conversation.input.dock / conversation.composer.dock 的**每一个直接子元素**
+   都当作 composer accessory 上背景+模糊+圆角+阴影，且带 !important：
+     background: var(--dsh-composer-accessory-bg, var(--dsw-specific-tip, ...)) !important;
+     border-radius: ... !important;  backdrop-filter: ... !important;
+   而 StatsPills 自身 CSS（dsh-client-ui-chat/StatsPills.module.css 的 .xxx_root）
+   是 width:100% → 这条统计行就被拉成**通栏白条**，背景不随内容宽度收缩。
+   这里把它收成贴内容宽度 + 居中，左右内边距取 **10px**——与同区域另外两条配件
+   （cm-qstrip「Go 5h」、cm-root「本会话 ¥…」在下方 cm-* 补丁里也是 10px）保持一致；
+   原先写 16px 会让这条的背景比下面那行每边多凸出 6px。
+   （只动宽度/内边距；背景、圆角、模糊仍由外壳渲染层与主题变量决定，
+     故深浅色主题都自动适配，无需再写 body[data-ds-dark-theme] 变体。） */
+[data-phase="active"] [data-slot="conversation.input.dock"] > [data-composer-stats],
+[data-phase="active"] [data-slot="conversation.composer.dock"] > [data-composer-stats] {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+
+/* ═══ 工具调用行：只保留一层白底模糊（去重）═══
+   `Pwsh · …` / `工具调用 · …` 这类行是三层嵌套、尺寸几乎重合：
+     [class*="callRow"]            ← 最外层 wrapper（含整行的内边距）
+       > [class*="o3BgMG_root"]    ← 工具行本体（data-variant/data-tool/data-state）
+         > [data-disclosure-row]   ← 可展开的标题行（_row_xxx o3BgMG_row）
+   上面「补漏」批次给这三层都加了 background + backdrop-filter + border-radius，
+   于是半透明背景被叠了 3 次（越叠越白/越糊），用户看到的就是「两层背景」。
+   这里保留最外层 callRow 那一层，把它的内层重置掉。
+   选择器刻意带上 `[data-slot="conversation.session"]` 与深色主题前缀，
+   以盖过原有规则的特异性（尤其 body[data-ds-dark-theme] 那条）。 */
+[data-slot="conversation.session"] [class*="callRow"] [class*="o3BgMG_root"],
+[data-slot="conversation.session"] [class*="callRow"] [class*="o3BgMG_summary"],
+[data-slot="conversation.session"] [class*="callRow"] [data-disclosure-row],
+body[data-ds-dark-theme] [data-slot="conversation.session"] [class*="callRow"] [class*="o3BgMG_root"],
+body[data-ds-dark-theme] [data-slot="conversation.session"] [class*="callRow"] [class*="o3BgMG_summary"],
+body[data-ds-dark-theme] [data-slot="conversation.session"] [class*="callRow"] [data-disclosure-row] {
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  width: auto;
+  max-width: none;
+}
+
+
+/* ═══ 「本次产出」行（deliverables：`nArs4W_producedRow`）：玻璃底 + 自适应宽度 ═══
+   它在 turn tail 里，之前没被任何补丁覆盖 → 文字/文件按钮直接压在插画上。
+   ⚠️ 宽度不能用 `width: fit-content` 单干：它的**父级是 `display: contents` 的插槽宿主**
+   （宽度算出来是 0），fit-content + `max-width:100%` 会把里面的文件 chip 挤成 3 行
+   （2026-09-10 实测 434px/3 行）。正确做法是把自身变成**行内级 shrink-to-fit 盒**：
+     `display: inline-flex`（不依赖父宽，直接按内容收缩）+ `align-self: flex-start`
+     （万一父级是 flex 容器，避免被 stretch 拉满宽）。
+   底色/模糊沿用其它行的配方。 */
+[class*="producedRow"] {
+  display: inline-flex;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  background: rgb(255 255 255 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+  padding: 4px 10px;
+  box-sizing: border-box;
+}
+
+body[data-ds-dark-theme] [class*="producedRow"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
+}
+
+
+/* ═══ 顶部导航栏（会话头部）与右侧侧边栏：颜色直接取「左侧导航栏」的实测色 ═══
+   左侧栏 `[data-pane="sidebar"]` 的 computed backgroundColor = rgba(242,245,250,.75)
+   （2026-09-10 实测；用户要求顶部/右侧栏「取左侧导航栏的颜色」，浓度 0.75）。
+   这里不再用纯白，改用同一基色 rgb(242,245,250) + .75，三栏观感统一。
+   定位：顶部导航栏用 `<header>` 元素名 + `[data-slot="main.conversation"]`；
+   右侧栏见下方注释（真面板是 `.panel`，两层 slot 宿主都是 display:contents）。 */
+[data-slot="main.conversation"] header,
+[data-slot="rightbar.session"] > *,
+[class*="rightbarCol"] [class*="panel"] {
+  background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.5));
+}
+
+[data-slot="main.conversation"] header {
+  border-bottom: 1px solid rgba(28, 37, 70, 0.08);
+}
+
+body[data-ds-dark-theme] [data-slot="main.conversation"] header,
+body[data-ds-dark-theme] [data-slot="rightbar.session"] > *,
+body[data-ds-dark-theme] [class*="rightbarCol"] [class*="panel"] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.5));
+}
+
+body[data-ds-dark-theme] [data-slot="main.conversation"] header {
+  border-bottom-color: rgba(160, 180, 230, 0.12);
+}
+
+
+/* ═══ 顶部导航栏内部各项：**不加任何背景**（2026-09-10 用户最终决定）═══
+   历程：先按要求给「会话名 / 模式选择 / 对话 / 轨迹 / 上下文」加了贴合内容宽度的
+   模糊底 → 用户反馈「文字底下的模糊很怪」→ 去掉 blur 只留底色 →
+   用户最终明确「那几个字不要背景了」→ 整条规则删除（背景/圆角/内边距/宽度都不加），
+   恢复官方原本的间距与下划线指示器。
+   所以这里只保留**顶部导航栏整条**的底色（见上面的规则），内部各项一律透明。
+   如果以后又要小底，参考 git 历史里那条：
+   `header nav[aria-label="会话层级"], header [class*="headerActions"], header [role="tablist"] button[role="tab"]`。 */
+
+
+/* ═══ 右侧侧边栏 = 官方 `@deepseek-ai/dsh-client-ui-sidebar-right` ═══
+   （dsh-better-sidebar 只是往它里面注入「文件/终端/浏览器」等内容，右侧栏本身是官方的。）
+   真实渲染的层级是：
+     [class*="rightbarCol"]            ← 列（收起时 0 宽）
+       [data-slot="rightbar"]          ← display:contents 插槽宿主，0×0，**上底无效**
+         [data-slot="rightbar.session"] ← 同上，0×0
+           [class*="panel"]            ← 真正画出来的面板（P3OORG_panel，position:absolute）
+   所以必须对最里层的 panel 上底（早先写在 `rightbarCol > *` 上 = 宿主元素，等于没写）。
+   颜色/浓度已并入上方「顶部导航栏与右侧侧边栏」那条统一规则（rgba(242,245,250,.75)），
+   这里不再重复声明，避免两处数值打架。 */

@@ -14,8 +14,21 @@
 # 若被删除/覆盖，重跑本脚本即可恢复）。
 #
 # 用法：pwsh scripts\apply-memos-plugin-fix.ps1
+#
+# ⛔️ 2026-09-10 已废弃：上游 @memtensor/memos-cloud-dsh-plugin@0.1.1（npm 2026-09-07）
+#    改用新 API settings.register()，web profile 依赖已回到 registry 包（^0.1.1），
+#    并在 dsh 0.1.5-rc.1 上验证通过。再执行本脚本会把依赖改回 link: 指针、回退到
+#    打过补丁的 0.1.0，覆盖官方包。确实需要临时回退时才加 -Force。
 # ---------------------------------------------------------------------------
+param([switch]$Force)
 $ErrorActionPreference = "Stop"
+
+if (-not $Force) {
+  Write-Host "本脚本已废弃（上游 0.1.1 已修复）。当前 web profile 应使用 registry 包：" -ForegroundColor Yellow
+  Write-Host "  node <dsh bin.js> plugin --profile web add @memtensor/memos-cloud-dsh-plugin@0.1.1" -ForegroundColor Yellow
+  Write-Host "如确需回退到本地补丁版，请显式执行：pwsh scripts\apply-memos-plugin-fix.ps1 -Force" -ForegroundColor Yellow
+  exit 1
+}
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $assetSrc = Join-Path $repoRoot "assets\memos-cloud-dsh-plugin-fixed"

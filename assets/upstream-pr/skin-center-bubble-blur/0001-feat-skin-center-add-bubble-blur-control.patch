@@ -1,0 +1,409 @@
+diff --git a/packages/skins/skin-center/src/client/SkinCenter.tsx b/packages/skins/skin-center/src/client/SkinCenter.tsx
+index a4578b0..d482754 100644
+--- a/packages/skins/skin-center/src/client/SkinCenter.tsx
++++ b/packages/skins/skin-center/src/client/SkinCenter.tsx
+@@ -79,11 +79,13 @@ export function SkinCenter({ t, runtime, theme, background, wallpaper, preview,
+   const blurContent = useSyncExternalStore(background.subscribe, background.blurContent)
+   const inputCardBlur = useSyncExternalStore(background.subscribe, background.inputCardBlur)
+   const bubbleOpacity = useSyncExternalStore(background.subscribe, background.bubbleOpacity)
++  const bubbleBlur = useSyncExternalStore(background.subscribe, background.bubbleBlur)
+   const [shownOpacity, setShownOpacity] = useLiveValue(opacity)
+   const [shownBlurEmpty, setShownBlurEmpty] = useLiveValue(blurEmpty)
+   const [shownBlurContent, setShownBlurContent] = useLiveValue(blurContent)
+   const [shownInputCardBlur, setShownInputCardBlur] = useLiveValue(inputCardBlur)
+   const [shownBubbleOpacity, setShownBubbleOpacity] = useLiveValue(bubbleOpacity)
++  const [shownBubbleBlur, setShownBubbleBlur] = useLiveValue(bubbleBlur)
+   const catalog = useSyncExternalStore(runtime.subscribe, runtime.catalog)
+   const state = useSyncExternalStore(runtime.subscribe, runtime.controller.getState)
+   const customThemeState = useSyncExternalStore(customTheme.subscribe, customTheme.getState)
+@@ -558,6 +560,26 @@ export function SkinCenter({ t, runtime, theme, background, wallpaper, preview,
+                     <p className={css.backgroundHint}>{t('bubbleOpacityHint')}</p>
+                   </div>
+ 
++                  <div className={css.backgroundRow}>
++                    <div className={css.backgroundHead}>
++                      <span className={css.backgroundLabel}>{t('bubbleBlur')}</span>
++                      <span className={css.backgroundValue} aria-hidden="true">{shownBubbleBlur}px</span>
++                    </div>
++                    <SliderControl
++                      id="skin-center-bubble-blur"
++                      className={css.backgroundRange}
++                      min={0}
++                      max={20}
++                      step={1}
++                      value={bubbleBlur}
++                      ariaValuetext={shownBubbleBlur + 'px'}
++                      ariaLabel={t('bubbleBlur')}
++                      onChanging={setShownBubbleBlur}
++                      onChange={(value) => { background.setBubbleBlur(value) }}
++                    />
++                    <p className={css.backgroundHint}>{t('bubbleBlurHint')}</p>
++                  </div>
++
+                   <WallpaperPanel t={t} wallpaper={wallpaper} />
+ 
+                   {error !== null && <div className={css.error}>{error}</div>}
+diff --git a/packages/skins/skin-center/src/client/background.ts b/packages/skins/skin-center/src/client/background.ts
+index c81ce09..c46e320 100644
+--- a/packages/skins/skin-center/src/client/background.ts
++++ b/packages/skins/skin-center/src/client/background.ts
+@@ -59,6 +59,12 @@ export const BUBBLE_OPACITY_FIELD = 'bubbleOpacity'
+ /** CSS custom property consumed by skins that expose translucent bubbles. */
+ export const BUBBLE_ALPHA_VAR = '--dsh-skin-bubble-alpha'
+ 
++/** Field of the message bubble blur inside the namespace section. */
++export const BUBBLE_BLUR_FIELD = 'bubbleBlur'
++
++/** CSS custom property consumed by skins that expose a bubble backdrop blur. */
++export const BUBBLE_BLUR_VAR = '--dsh-skin-bubble-blur'
++
+ /** CSS custom property consumed by the shared composer neutralizer. */
+ export const INPUT_CARD_BLUR_VAR = '--dsh-input-card-blur'
+ 
+@@ -68,6 +74,9 @@ export const DEFAULT_OPACITY = SKIN_BACKGROUND_DEFAULTS.backgroundOpacity
+ /** Default message bubble opacity percentage. */
+ export const DEFAULT_BUBBLE_OPACITY = SKIN_BACKGROUND_DEFAULTS.bubbleOpacity
+ 
++/** Default message bubble backdrop blur in px. */
++export const DEFAULT_BUBBLE_BLUR = SKIN_BACKGROUND_DEFAULTS.bubbleBlur
++
+ /** Default blur (0 = disabled) when the section carries none. */
+ export const DEFAULT_BLUR = SKIN_BACKGROUND_DEFAULTS.backgroundBlurEmpty
+ 
+@@ -87,6 +96,8 @@ export interface SkinBackgroundHandle {
+   inputCardBlur(): number
+   /** Current message bubble opacity 0-100. */
+   bubbleOpacity(): number
++  /** Current message bubble backdrop blur 0-20 px. */
++  bubbleBlur(): number
+   /** Observe a change in the applied values. */
+   subscribe(listener: () => void): () => void
+   /** Apply + persist a new occlusion. */
+@@ -99,6 +110,8 @@ export interface SkinBackgroundHandle {
+   setInputCardBlur(value: number): void
+   /** Apply + persist a new message bubble opacity (0-100). */
+   setBubbleOpacity(value: number): void
++  /** Apply + persist a new message bubble backdrop blur (0-20 px). */
++  setBubbleBlur(value: number): void
+   /** Tear down the blur element and MutationObserver. */
+   dispose(): void
+ }
+@@ -130,6 +143,7 @@ export class BackgroundController implements SkinBackgroundHandle {
+   private blurContentValue = SKIN_BACKGROUND_DEFAULTS.backgroundBlurContent
+   private inputCardBlurValue = SKIN_BACKGROUND_DEFAULTS.inputCardBlur
+   private bubbleOpacityValue = SKIN_BACKGROUND_DEFAULTS.bubbleOpacity
++  private bubbleBlurValue = SKIN_BACKGROUND_DEFAULTS.bubbleBlur
+   private readonly listeners = new Set<() => void>()
+   private readonly persist: (next: SkinBackgroundConfig) => void
+   /** The fixed backdrop-filter element, present only while active blur > 0. */
+@@ -152,6 +166,7 @@ export class BackgroundController implements SkinBackgroundHandle {
+     this.applyOcclusion()
+     this.applyInputCardBlur()
+     this.applyBubbleOpacity()
++    this.applyBubbleBlur()
+     this.syncBlur()
+   }
+ 
+@@ -167,6 +182,7 @@ export class BackgroundController implements SkinBackgroundHandle {
+     this.applyOcclusion()
+     this.applyInputCardBlur()
+     this.applyBubbleOpacity()
++    this.applyBubbleBlur()
+     this.syncBlur()
+     this.publish()
+   }
+@@ -180,6 +196,7 @@ export class BackgroundController implements SkinBackgroundHandle {
+       backgroundBlurContent: this.blurContentValue,
+       inputCardBlur: this.inputCardBlurValue,
+       bubbleOpacity: this.bubbleOpacityValue,
++      bubbleBlur: this.bubbleBlurValue,
+     }
+   }
+ 
+@@ -190,6 +207,7 @@ export class BackgroundController implements SkinBackgroundHandle {
+     this.applyOcclusion()
+     this.applyInputCardBlur()
+     this.applyBubbleOpacity()
++    this.applyBubbleBlur()
+     this.syncBlur()
+     this.publish()
+     this.persist(this.snapshot())
+@@ -205,6 +223,8 @@ export class BackgroundController implements SkinBackgroundHandle {
+ 
+   bubbleOpacity = (): number => this.bubbleOpacityValue
+ 
++  bubbleBlur = (): number => this.bubbleBlurValue
++
+   subscribe = (listener: () => void): (() => void) => {
+     this.listeners.add(listener)
+     return () => { this.listeners.delete(listener) }
+@@ -247,6 +267,13 @@ export class BackgroundController implements SkinBackgroundHandle {
+     this.persist(this.snapshot())
+   }
+ 
++  setBubbleBlur(value: number): void {
++    this.bubbleBlurValue = this.clampBlur(value)
++    this.applyBubbleBlur()
++    this.publish()
++    this.persist(this.snapshot())
++  }
++
+   dispose(): void {
+     this.disposed = true
+     if (this.rafId !== null) {
+@@ -256,6 +283,7 @@ export class BackgroundController implements SkinBackgroundHandle {
+     this.removeBlurElement()
+     document.body.style.removeProperty(INPUT_CARD_BLUR_VAR)
+     document.body.style.removeProperty(BUBBLE_ALPHA_VAR)
++    document.body.style.removeProperty(BUBBLE_BLUR_VAR)
+     if (this.observer !== null) {
+       this.observer.disconnect()
+       this.observer = null
+@@ -271,6 +299,7 @@ export class BackgroundController implements SkinBackgroundHandle {
+     this.blurContentValue = resolved.backgroundBlurContent
+     this.inputCardBlurValue = resolved.inputCardBlur
+     this.bubbleOpacityValue = resolved.bubbleOpacity
++    this.bubbleBlurValue = resolved.bubbleBlur
+   }
+ 
+   private clampBlur(value: number): number {
+@@ -297,6 +326,14 @@ export class BackgroundController implements SkinBackgroundHandle {
+     document.body.style.setProperty(BUBBLE_ALPHA_VAR, String(this.bubbleOpacityValue / 100))
+   }
+ 
++  private applyBubbleBlur(): void {
++    if (!this.enabledValue) {
++      document.body.style.removeProperty(BUBBLE_BLUR_VAR)
++      return
++    }
++    document.body.style.setProperty(BUBBLE_BLUR_VAR, this.bubbleBlurValue + 'px')
++  }
++
+   /** Write the current occlusion onto the body CSS variable (0..1 alpha). */
+   private applyOcclusion(): void {
+     if (!this.enabledValue) {
+diff --git a/packages/skins/skin-center/src/client/index.ts b/packages/skins/skin-center/src/client/index.ts
+index f7a18f8..823878c 100644
+--- a/packages/skins/skin-center/src/client/index.ts
++++ b/packages/skins/skin-center/src/client/index.ts
+@@ -258,12 +258,14 @@ export function apply(ctx: ClientContext): void {
+       blurContent: () => background.blurContent(),
+       inputCardBlur: () => background.inputCardBlur(),
+       bubbleOpacity: () => background.bubbleOpacity(),
++      bubbleBlur: () => background.bubbleBlur(),
+       subscribe: listener => background.subscribe(listener),
+       set: opacity => background.set(opacity),
+       setBlurEmpty: value => background.setBlurEmpty(value),
+       setBlurContent: value => background.setBlurContent(value),
+       setInputCardBlur: value => background.setInputCardBlur(value),
+       setBubbleOpacity: value => background.setBubbleOpacity(value),
++      setBubbleBlur: value => background.setBubbleBlur(value),
+       dispose: () => background.dispose(),
+     },
+     wallpaper: {
+diff --git a/packages/skins/skin-center/src/client/locales.ts b/packages/skins/skin-center/src/client/locales.ts
+index d648798..0cb8feb 100644
+--- a/packages/skins/skin-center/src/client/locales.ts
++++ b/packages/skins/skin-center/src/client/locales.ts
+@@ -36,6 +36,8 @@ export type SkinCenterKey =
+   | 'inputCardBlurHint'
+   | 'bubbleOpacity'
+   | 'bubbleOpacityHint'
++  | 'bubbleBlur'
++  | 'bubbleBlurHint'
+   | 'backgroundBlurHint'
+   | 'backgroundBlurInert'
+   | 'backgroundHint'
+@@ -156,6 +158,8 @@ export const en: Record<SkinCenterKey, string> = {
+   inputCardBlurHint: 'Blurs only the area behind the input card while backdrop art is visible; it does not blur the entire wallpaper.',
+   bubbleOpacity: 'Bubble opacity',
+   bubbleOpacityHint: 'Controls translucent message bubbles for skins that expose bubble alpha, such as Whale Mom.',
++  bubbleBlur: 'Bubble blur',
++  bubbleBlurHint: 'Blurs the backdrop behind translucent message bubbles; independent of bubble opacity, 0 disables.',
+   backgroundBlurHint: 'Applies a separate Gaussian blur to the backdrop for the empty conversation and the conversation with content; 0 disables.',
+   backgroundBlurInert: 'Visible only with skins that paint a backdrop; the official default has none.',
+   backgroundHint: 'Instantly veils the backdrop behind the panels — higher values obscure the art to help you focus.',
+@@ -277,6 +281,8 @@ export const zh: Record<SkinCenterKey, string> = {
+   inputCardBlurHint: '仅模糊输入卡背后的区域，不会让整张壁纸变糊。',
+   bubbleOpacity: '气泡不透明度',
+   bubbleOpacityHint: '调节支持气泡 alpha 的皮肤消息气泡，例如鲸鱼妈妈。',
++  bubbleBlur: '气泡模糊程度',
++  bubbleBlurHint: '模糊半透明消息气泡背后的区域，与「气泡不透明度」相互独立，0 为关闭。',
+   backgroundBlurHint: '对话为空与有内容时分别应用不同的背景高斯模糊强度，0 为关闭。',
+   backgroundBlurInert: '仅对带背景图插画的皮肤可见；官方默认无背景图。',
+   backgroundHint: '即时为面板背后的背景加遮罩——数值越高越能弱化插画，帮你集中注意力。',
+diff --git a/packages/skins/skin-center/src/core/background.ts b/packages/skins/skin-center/src/core/background.ts
+index 76ef0ae..cd51f1a 100644
+--- a/packages/skins/skin-center/src/core/background.ts
++++ b/packages/skins/skin-center/src/core/background.ts
+@@ -27,6 +27,8 @@ export interface SkinBackgroundConfig {
+   inputCardBlur?: number
+   /** Message bubble opacity 0-100, for skins exposing bubble alpha. */
+   bubbleOpacity?: number
++  /** Message-bubble backdrop blur 0-20 px, for skins exposing bubble blur. */
++  bubbleBlur?: number
+ }
+ 
+ /** Effective value of every field when the state carries none. */
+@@ -37,6 +39,7 @@ export const SKIN_BACKGROUND_DEFAULTS: Readonly<Required<SkinBackgroundConfig>>
+   backgroundBlurContent: 0,
+   inputCardBlur: 10,
+   bubbleOpacity: 50,
++  bubbleBlur: 10,
+ }
+ 
+ /** The fields normalize/sanitize know about; unknown keys are dropped. */
+@@ -52,6 +55,7 @@ const RANGES: Record<Exclude<keyof SkinBackgroundConfig, 'enabled'>, [number, nu
+   backgroundBlurContent: [0, 20],
+   inputCardBlur: [0, 20],
+   bubbleOpacity: [0, 100],
++  bubbleBlur: [0, 20],
+ }
+ 
+ function isRecord(value: unknown): value is Record<string, unknown> {
+diff --git a/packages/skins/skin-center/src/index.ts b/packages/skins/skin-center/src/index.ts
+index f8b9700..ffff87b 100644
+--- a/packages/skins/skin-center/src/index.ts
++++ b/packages/skins/skin-center/src/index.ts
+@@ -98,6 +98,7 @@ export const SkinBackgroundConfigSchema: z<SkinBackgroundConfig> = z.object({
+   backgroundBlurContent: z.number().min(0).max(20).step(1).default(SKIN_BACKGROUND_DEFAULTS.backgroundBlurContent),
+   inputCardBlur: z.number().min(0).max(20).step(1).default(SKIN_BACKGROUND_DEFAULTS.inputCardBlur),
+   bubbleOpacity: z.number().min(0).max(100).step(5).default(SKIN_BACKGROUND_DEFAULTS.bubbleOpacity),
++  bubbleBlur: z.number().min(0).max(20).step(1).default(SKIN_BACKGROUND_DEFAULTS.bubbleBlur),
+ })
+ 
+ /**
+diff --git a/packages/skins/skin-center/tests/background-migration.spec.ts b/packages/skins/skin-center/tests/background-migration.spec.ts
+index ac9ecb7..3ddde80 100644
+--- a/packages/skins/skin-center/tests/background-migration.spec.ts
++++ b/packages/skins/skin-center/tests/background-migration.spec.ts
+@@ -67,6 +67,7 @@ describe('migrateBackgroundFromSettings', () => {
+         backgroundBlurContent: 0,
+         inputCardBlur: 10,
+         bubbleOpacity: 50,
++        bubbleBlur: 10,
+       }),
+     })
+     expect(result.migrated).toBe(false)
+diff --git a/packages/skins/skin-center/tests/background-scope.spec.ts b/packages/skins/skin-center/tests/background-scope.spec.ts
+index a078143..6042fe4 100644
+--- a/packages/skins/skin-center/tests/background-scope.spec.ts
++++ b/packages/skins/skin-center/tests/background-scope.spec.ts
+@@ -16,6 +16,7 @@ const current = {
+   backgroundBlurContent: 0,
+   inputCardBlur: 10,
+   bubbleOpacity: 50,
++  bubbleBlur: 10,
+ }
+ 
+ describe('skin-background scope reconciliation', () => {
+diff --git a/packages/skins/skin-center/tests/background.spec.ts b/packages/skins/skin-center/tests/background.spec.ts
+index adeacda..414b819 100644
+--- a/packages/skins/skin-center/tests/background.spec.ts
++++ b/packages/skins/skin-center/tests/background.spec.ts
+@@ -11,6 +11,7 @@ import type { SkinBackgroundConfig } from '../src/core/background.ts'
+ import {
+   BackgroundController,
+   BUBBLE_ALPHA_VAR,
++  BUBBLE_BLUR_VAR,
+   SCRIM_VAR,
+   INPUT_CARD_BLUR_VAR,
+ } from '../src/client/background.ts'
+@@ -198,6 +199,18 @@ describe('BackgroundController', () => {
+     expect(document.body.style.getPropertyValue(BUBBLE_ALPHA_VAR)).toBe('')
+   })
+ 
++  it('applies, persists, and cleans up message bubble blur', () => {
++    const { controller, writes } = rig({ bubbleBlur: 6 })
++    expect(controller.bubbleBlur()).toBe(6)
++    expect(document.body.style.getPropertyValue(BUBBLE_BLUR_VAR)).toBe('6px')
++    controller.setBubbleBlur(99)
++    expect(controller.bubbleBlur()).toBe(20)
++    expect(document.body.style.getPropertyValue(BUBBLE_BLUR_VAR)).toBe('20px')
++    expect(writes[0].bubbleBlur).toBe(20)
++    controller.dispose()
++    expect(document.body.style.getPropertyValue(BUBBLE_BLUR_VAR)).toBe('')
++  })
++
+   it('setEnabled(false) persists the master switch', () => {
+     const { controller, writes } = rig()
+     controller.setEnabled(false)
+@@ -217,6 +230,7 @@ describe('BackgroundController', () => {
+     // Untouched fields fall back to defaults, matching the stored merge.
+     expect(controller.inputCardBlur()).toBe(10)
+     expect(controller.bubbleOpacity()).toBe(50)
++    expect(controller.bubbleBlur()).toBe(10)
+     expect(document.body.style.getPropertyValue(SCRIM_VAR)).toBe('1')
+     // init never writes back: the source already owns the stored copy.
+     expect(writes).toHaveLength(0)
+@@ -241,6 +255,7 @@ describe('BackgroundController', () => {
+       backgroundBlurContent: 0,
+       inputCardBlur: 10,
+       bubbleOpacity: 50,
++      bubbleBlur: 10,
+     })
+     controller.dispose()
+   })
+diff --git a/packages/skins/skin-center/tests/routes-v2.spec.ts b/packages/skins/skin-center/tests/routes-v2.spec.ts
+index 84f6b92..4bdeeea 100644
+--- a/packages/skins/skin-center/tests/routes-v2.spec.ts
++++ b/packages/skins/skin-center/tests/routes-v2.spec.ts
+@@ -409,10 +409,10 @@ describe('v2 active selection', () => {
+   it('clamps out-of-range background values and rejects wrongly typed ones', async () => {
+     const server = await serve(makeRoutes())
+     const clamped = await call(server.port, 'POST', `${SKIN_CENTER_V2_PREFIX}/active`, {
+-      body: { background: { backgroundOpacity: 250, backgroundBlurEmpty: -2 } },
++      body: { background: { backgroundOpacity: 250, backgroundBlurEmpty: -2, bubbleBlur: 99 } },
+     })
+     expect(clamped.status).toBe(200)
+-    expect(clamped.jsonBody.background).toEqual({ backgroundOpacity: 100, backgroundBlurEmpty: 0 })
++    expect(clamped.jsonBody.background).toEqual({ backgroundOpacity: 100, backgroundBlurEmpty: 0, bubbleBlur: 20 })
+     const wrongType = await call(server.port, 'POST', `${SKIN_CENTER_V2_PREFIX}/active`, {
+       body: { background: { backgroundOpacity: '100' } },
+     })
+diff --git a/packages/skins/skin-center/tests/skin-center-custom-theme.spec.tsx b/packages/skins/skin-center/tests/skin-center-custom-theme.spec.tsx
+index bea51c0..cecc102 100644
+--- a/packages/skins/skin-center/tests/skin-center-custom-theme.spec.tsx
++++ b/packages/skins/skin-center/tests/skin-center-custom-theme.spec.tsx
+@@ -63,6 +63,7 @@ async function renderSkinCenter(options: {
+   runSkin?: (action: () => Promise<string | null>) => Promise<string | null>
+   runCustomTheme?: (action: () => Promise<string | null>) => Promise<string | null>
+   setBubbleOpacity?: (value: number) => void
++  setBubbleBlur?: (value: number) => void
+ } = {}): Promise<void> {
+   const active = options.active ?? null
+   const controllerState = { active, trying: null, previewing: false }
+@@ -115,9 +116,10 @@ async function renderSkinCenter(options: {
+       }}
+       background={{
+         enabled: () => true, opacity: () => 0, blurEmpty: () => 0, blurContent: () => 0,
+-        inputCardBlur: () => 10, bubbleOpacity: () => 50, subscribe: () => () => {}, setEnabled: () => {}, set: () => {},
++        inputCardBlur: () => 10, bubbleOpacity: () => 50, bubbleBlur: () => 10, subscribe: () => () => {}, setEnabled: () => {}, set: () => {},
+         setBlurEmpty: () => {}, setBlurContent: () => {}, setInputCardBlur: () => {},
+         setBubbleOpacity: options.setBubbleOpacity ?? (() => {}),
++        setBubbleBlur: options.setBubbleBlur ?? (() => {}),
+         dispose: () => {},
+       }}
+       wallpaper={wallpaper as never}
+@@ -196,6 +198,21 @@ describe('SkinCenter background controls', () => {
+     })
+     expect(setBubbleOpacity).toHaveBeenCalledWith(65)
+   })
++
++  it('renders and persists the bubble blur slider', async () => {
++    const setBubbleBlur = vi.fn()
++    await renderSkinCenter({ setBubbleBlur })
++
++    const input = inputByLabel(t('bubbleBlur'))
++    expect(input.id).toBe('skin-center-bubble-blur')
++    expect(input.value).toBe('10')
++    await act(async () => {
++      input.value = '18'
++      input.dispatchEvent(new Event('input', { bubbles: true }))
++      input.dispatchEvent(new Event('change', { bubbles: true }))
++    })
++    expect(setBubbleBlur).toHaveBeenCalledWith(18)
++  })
+ })
+ 
+ describe('SkinCenter custom theme transactions', () => {

@@ -1,0 +1,38 @@
+{
+  "skin": "blue-fantasy",
+  "installedVersion": "0.2.0",
+  "installedFrom": "https://dsh-market.com",
+  "installedAt": "2026-08-28T15:38:20.539Z",
+  "installedPatchesSha256": "0f4d48904763b1928c36ed109df5bd8f6666824e0313a650ab9a4adbaad9927d",
+  "upstream": {
+    "repo": "https://github.com/zhu1090093659/dsh-web",
+    "branch": "dev",
+    "path": "packages/skins/skin-center/skins/blue-fantasy",
+    "rawBase": "https://raw.githubusercontent.com/zhu1090093659/dsh-web/dev/packages/skins/skin-center/skins/blue-fantasy",
+    "marketManifest": "https://dsh-market.com/manifest/skins.json",
+    "marketAssetBase": "https://dsh-market.com/assets/skins/blue-fantasy/",
+    "author": "powerdog996（DreamSkin 社区）· dsh-web 适配"
+  },
+  "base": {
+    "file": "upstream/patches.base.css",
+    "sha256": "3354134f0990cfb5ea657a5470e3b2ef29034718ea2c04c1774441b3dbdcd835",
+    "bytes": 7294,
+    "lines": 262,
+    "commit": "66d83fa39eed458b4fbf098791f72891eeba71be",
+    "commitDate": "2026-09-03T13:11:40Z",
+    "commitSubject": "perf(skin-center): remove root backdrop-filter in blue-fantasy skin (#1358)"
+  },
+  "merged": [
+    {
+      "date": "2026-09-10",
+      "from": "eba552b2212d9163d6557206b0d6658d35070364",
+      "to": "66d83fa39eed458b4fbf098791f72891eeba71be",
+      "summary": "#1358：把 .aionui-root 从 backdrop-filter: blur(12px) 规则里摘掉，并给两列加 contain: paint"
+    }
+  ],
+  "notes": [
+    "上游改这个文件时【不会】bump skin.json 的 version（仍是 0.2.0），市场也因此不会提示“有更新”——只能靠 sha256 比对发现。",
+    "市场安装的 copies 会覆盖 patches.css，所以本地改动必须在这里留底。",
+    "全量重装皮肤（走市场）会把 patches.css 换回上游版：先 restore 再重装，或重装后 restore。"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "source": "https://dsh-market.com",
+  "kind": "skin",
+  "id": "blue-fantasy",
+  "installedAt": "2026-08-28T15:38:20.539Z",
+  "files": {
+    "assets/whale-art.jpg": "1bec59fd53652555e727e529046422db25b977624e9c291bb8b78e0caf952303",
+    "assets/whale-icon.png": "d1e6058d19b04817a623dc6e3a99405c70defaf412e9296edf7dbe2032ff7cbe",
+    "hooks.mjs": "21ac2ad4d4423acf31e3391bfba18ce2d9eec7b192f7a0ba47e8a0c843ff15a5",
+    "patches.css": "0f4d48904763b1928c36ed109df5bd8f6666824e0313a650ab9a4adbaad9927d",
+    "preview/dark.jpg": "28bc42f5ecf1a735cd992be01e4b18477040774d854fe4cebe1b508758030379",
+    "preview/light.jpg": "e1f002aff8519e78a46d9ae8b8cc612bc6e76df93efe86bbbdeb2b5897b2522a",
+    "skin.css": "eb4828f5fa4539e484a3bf7425cf01101fce72d78eaf7e2c9acc9cb31ddcf040",
+    "skin.json": "b22cc82145e1f90f4257af1411724e34a99513761290980fb5f8d25727809808"
+  }
+}
