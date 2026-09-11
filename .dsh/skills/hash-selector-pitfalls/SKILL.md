@@ -147,6 +147,27 @@ _markdown_kcgor_5              ← markdown 容器
 落在 `.EvIC1a_column { max-width: var(--dsh-chat-content-width); width:100%; margin:0 auto }`（本机实测 829.44px）。
 判断「有没有超宽」就以这个 column 的左右边界为基准量。
 
+## 8. 别给 composer seat 加 `backdrop-filter` —— 被 skin-center 的 neutralizer 清掉
+`[data-composer-seat]` 上写 `backdrop-filter` 是**死代码**。skin-center 注入的
+`<style data-dsh-scene-neutralizer>` 里有：
+
+```css
+html[data-dsh-backdrop-active] [data-composer-seat],
+html[data-dsh-backdrop-active] [data-composer-seat]::before {
+  background: none !important; backdrop-filter: none !important;
+}
+html[data-dsh-backdrop-active][data-dsh-conversation-content] [data-composer-card] {
+  backdrop-filter: blur(var(--dsh-input-card-blur, 10px)) !important;
+}
+```
+
+即**它有意**把停靠区的模糊收归到「输入卡」一处（由 `--dsh-input-card-blur` 控制），
+避免两层各自模糊。我们那条规则特异性一样但更靠前 → 被 `!important` 直接清成 `none`
+（实测 `computed backdrop-filter = none`）。**要改输入区模糊，应该动 `--dsh-input-card-blur`
+或 `[data-composer-card]`，不是 `[data-composer-seat]`。**
+排查手法：遍历 `document.styleSheets`，打印所有 `el.matches(selectorText)` 且带
+`backdrop-filter` 的规则 —— 一眼就能看出是谁用 `!important` 赢的。
+
 ## 通用教训
 
 给 `[class*="…"]` 加视觉属性前，先看这条选择器会不会同时命中**同一子树里的多层**；要「只留一层」就得连内层一起重置。跨构建哈希选择器优先加作用域或改用语义属性。
