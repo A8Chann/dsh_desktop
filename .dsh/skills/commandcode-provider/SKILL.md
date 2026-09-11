@@ -61,7 +61,12 @@ Command Code 网关把 OpenAI 格式转回 Anthropic 协议时，要求 assistan
 
 **补丁痕迹**：`~/.dsh/profiles/web/node_modules/@mars-sea/dsh-commandcode-provider/lib/index.js*)`，备份 `index.js.orig-dsh-toolimg-patch`（172345 B → 补丁后 172817 B，node --check 通过）。**0.10.5 目前是最新版，升级后需重打**。
 
-**上游 PR**：已提交 [Mars-Sea/dsh-commandcode-provider#33](https://github.com/Mars-Sea/dsh-commandcode-provider/pull/33)（分支 `A8Chann:fix/tool-image-carry-order`，commit 59e0619；含 `src/adapter.ts` + `tests/adapter.test.ts` 两个回归测试 + 重建的 `lib/`）。合并发版后本地补丁即可撤下。
+**上游 PR**：已提交 [Mars-Sea/dsh-commandcode-provider#33](https://github.com/Mars-Sea/dsh-commandcode-provider/pull/33)（分支 `A8Chann:fix/tool-image-carry-order`，commit 59e0619；含 `src/adapter.ts` + `tests/adapter.test.ts` 两个回归测试 + 重建的 `lib/`）。
+
+**✅ 2026-09-11 状态：PR 已合并（无 review 评论，merge commit `0b391ca`，07:37Z），但还没发版** ——
+npm 上 `latest` 仍是 **0.10.5**（发布于同日 02:44Z，**早于合并**）。
+→ **本地补丁必须继续留着**；等 0.10.6+ 发布后再 `dsh plugin add` 升级、确认内容含该修复，然后撤下补丁（备份 `index.js.orig-dsh-toolimg-patch`）。
+判据：升级后 `Select-String -Pattern 'pendingImages'` 若在新版里本就命中，即说明修复已随包发布。
 
 **验证法**：
 1. 离线单元级：`scripts/verify-toolimg-patch.mjs`（多帧 zstd 读会话 → 重建消息 → 模拟当前/修复转换 → Anthropic 连续性校验）。出错会话 `session-f1068d0a-107a-4538-9a16-7dcef3463d2f`：当前逻辑 `["msg#100 (user): 缺 call_01_ET_mAJWnSxgcjz5y8kSWlpW3588"]`，修复逻辑 `[]`。
