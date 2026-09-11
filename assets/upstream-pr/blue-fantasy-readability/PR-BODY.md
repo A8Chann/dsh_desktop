@@ -103,20 +103,25 @@ pnpm docs:check
 
 ## 用户可见变更证据（Local Feature Evidence）
 
-证据：同一会话、同一滚动位置、同一主题，唯一差别是本层规则被 CSSOM 关掉（before）/ 打开（after）；截图取自「上游原版皮肤 + 本 PR 的 166 行」，不含任何其它本地改动。
+证据（浅色 / 深色，同一滚动位置）：
 
-**修复前 / Before** —— 正文与工具行直接压在插画上：
+![light](https://raw.githubusercontent.com/A8Chann/dsh-web/feat/blue-fantasy-alpha-nav/docs/archive/2026-09-11-blue-fantasy-alpha-nav/light.png)
 
-![before](https://raw.githubusercontent.com/A8Chann/dsh-web/feat/blue-fantasy-readability/docs/archive/2026-09-10-blue-fantasy-readability/before.png)
-
-**修复后 / After** —— 文字所在块有毛玻璃托底，插画在其它区域保持可见：
-
-![after](https://raw.githubusercontent.com/A8Chann/dsh-web/feat/blue-fantasy-readability/docs/archive/2026-09-10-blue-fantasy-readability/after.png)
+![dark](https://raw.githubusercontent.com/A8Chann/dsh-web/feat/blue-fantasy-alpha-nav/docs/archive/2026-09-11-blue-fantasy-alpha-nav/dark.png)
 
 被本层覆盖的元素计数（实测，同一会话）：markdown 块 **36**、可展开行 **95**、状态行 **1**；暗色主题变体见 CSS（`body[data-ds-dark-theme]`）。
 
+## 后续（同一分支的补充提交）
+
+1. **α 联动滑块**：所有「文字背后的托底」透明度改为读 `var(--dsh-skin-bubble-alpha, .5)`，系数取「默认 50% 时正好复现上一版的固定值」（`.5→×1`、`.55→×1.1`、`.4→×.8`、`.45→×.9`）。于是「气泡不透明度」滑块统管这一层。亮色基色由纯白改为左栏实测的 `rgb(242 245 250)`，与周围面板同色系。
+   - 实测：滑块 `0.8 → .8`、`0.2 → .2`、`0 → 全透明`。
+2. **代码块补毛玻璃**：围栏代码在壳层里渲染成 `<div class="md-code-block">` 而**不是 `<pre>`**，所以原有的 markdown `> pre` 规则从未命中它 —— 它一直只有壳层自带底色、没有 backdrop 模糊。补上（外壳自带的填充色不动）。
+3. **表格托底贴合内容宽度**：壳层的表格外层容器默认撑满整栏，而表格本身贴内容宽度，于是短表格旁边会空出约 **300px** 的空玻璃（实测托底 829px / 表格 528px）。把托底收成贴合表格（仍以整栏为上限）；宽表照旧由容器自身的 `overflow-x: auto` 横向滚动。
+4. **回合过程行**（`N 次工具调用 · M 条消息`）：改挂语义属性 `data-turn-process`，不再用会连带命中其 label 与 chevron 的共享类名前缀（三层 `.5` 白叠成肉眼可见的「双层背景」）。顺带把上游那条分隔线的 `padding: 0 0 8px` + 底边框收成与相邻工具行一致的版式，分隔线仅在展开态保留。
+5. **窗口外框**：顶部导航栏与右侧栏面板取左栏基色、**固定 0.75**（不跟随「气泡不透明度」——外框不是气泡）；导航栏内部各项继续保持无背景。
+
 ## 备注（Notes）
 
-- 模糊读的是 `var(--dsh-skin-bubble-blur, 10px)`：该变量目前**尚不存在**，此处靠 fallback 生效；它正是 [#1469](https://github.com/zhu1090093659/dsh-web/issues/1466) 提议的「气泡模糊程度」滑杆要写入的变量，一旦落地，本层即可被用户调节，皮肤无需再改。
-- 透明度使用固定值（亮 `rgba(255,255,255,.5)` / 暗 `rgba(16,22,42,.4)`），**刻意不耦合**「气泡不透明度」——否则用户把该滑杆调到 0 时，可读性层会一起消失。
-- 未包含的相邻改动（如需可另开）：工具调用行的三层背景去重（涉及 `callRow` / `o3BgMG_*` 等模块哈希，脆弱性较高）、顶部导航栏与右侧栏的底色。
+- 模糊读 `var(--dsh-skin-bubble-blur, 10px)`，透明度读 `var(--dsh-skin-bubble-alpha, .5)`：两个变量都由皮肤中心「背景」卡提供。前者皮肤中心**目前还没有**（见 [#1469](https://github.com/zhu1090093659/dsh-web/issues/1469) 的提案），此处靠兜底值生效；一旦那条落地，本层两个维度都可被用户调节，皮肤无需再改。
+- 未包含的相邻改动（如需可另开）：工具调用行的多层背景去重（涉及 `callRow` / `o3BgMG_*` 等模块哈希，脆弱性较高）。
+

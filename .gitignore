@@ -14,4 +14,5 @@ src-tauri/target/
 # DSH 运行时产物默认不入库；但 .dsh/skills 是随仓库维护的规则/经验存档，必须入库。
 .dsh/*
 !.dsh/skills/
-
+# npm 误跑 npm install 会生成空壳锁文件；本仓库前端走 tauri / npx，不用 npm
+package-lock.json

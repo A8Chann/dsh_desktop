@@ -73,6 +73,84 @@ description: >
 
 **验证**：沿祖先链数 `backgroundColor !== 'rgba(0,0,0,0)'` 的元素个数，修复前 3 → 修复后 1。
 
+### 5. 同模块的 `_root` / `_label` / `_chevron` 三兄弟一起中招
+回合过程行「N 次工具调用 · M 条消息」原先挂在 `[class*="l_V-RG_"]` 上，而 `l_V-RG_` 是
+**同一模块的三个类名共用前缀**：
+
+| 元素 | 尺寸 | 后果 |
+|---|---|---|
+| `BUTTON.l_V-RG_root` | 117×32 | 本该只有它有底色 |
+| `SPAN.l_V-RG_label` | 81×24 | 也吃白底 + blur → **内层那个小圆角白框** |
+| `SVG.l_V-RG_chevron` | 16×16 | 图标底下也被刷一层 |
+
+三层 `.5` 白相叠 → 内圈更白 → 肉眼就是「两层背景」（用户 2026-09-10 反馈）。
+
+**与第 4 条的区别**：第 4 条是**不同模块多层嵌套**（callRow 套 o3BgMG 套 disclosure-row），
+本条是**同一模块内** `_root` / `_label` / `_chevron` 共享前缀 —— 只要写了 `[class*="<前缀>_"]`
+就会一次命中整族。故 `[class*="X_"]` 这种**带下划线的通配**尤其危险：它等价于
+「X 模块的所有槽位」。
+
+**修法（优先语义属性，别再补 `:not()`）**：该 button 上有稳定的
+`data-turn-process`（值 = turn 序号，来自 `TurnProcessNodeView`），直接改挂它：
+```css
+[data-slot="main.conversation"] [data-turn-process] { /* 底色/模糊/圆角 */ }
+body[data-ds-dark-theme] [data-slot="main.conversation"] [data-turn-process] { /* 深色底 */ }
+```
+属性选择器只精确匹配属性名，不会误命中同族的 `data-turn-process-member` /
+`-hidden` / `-answer` / `-inline`。
+
+**验证**：`bgLayers` 3 → 1，且行内后代 `descendantsWithBg` = 0。
+
+**顺带**：上游 `.l_V-RG_root` 是 `height:33px; padding:0 0 8px; border-bottom:.5px solid`
+（给「过程↔正文」做分隔的分隔行）。套毛玻璃胶囊后底边会多 8px 空白 + 一道压在圆角上的杂线，
+故一并收成 `height:auto; padding:1px 8px; border-bottom:none`（与 `callRow` 对齐），
+分隔线只在**展开态** `[data-turn-process][data-open]` 还给「过程↔正文」。
+
+## 6. 「看着像 `<pre>` 其实不是」：围栏代码块
+`[class*="markdown"] > pre` 这类**元素名**规则会漏掉围栏代码块 —— 壳层把它渲染成
+**`<div class="_block_rsn9u_4 md-code-block">`**（`md-code-block` 是**稳定类名**，非哈希）：
+
+```
+_markdown_kcgor_5              ← markdown 容器
+  └ DIV.md-code-block          bg=rgba(243,245,251,.58) br=12px  ← 壳层自带底，但无 backdrop-filter
+      ├ DIV._banner_rsn9u_24
+      └ PRE._plain_rsn9u_103
+```
+
+用户 2026-09-11 反馈「`class="_block_rsn9u_4 md-code-block"` 这个怎么没有背景模糊」——
+根因就是上一版 PR 的 markdown `> pre` 规则从未命中它。修法：另写一条
+`[class*="markdown"] [class*="md-code-block"] { backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3) }`，
+**只补模糊、别覆盖壳层自带的填充色**（它是 `.58` 的 `rgb(243,245,251)`）。
+
+⚠️ 调试时注意：这类元素只在**当前会话真的有代码块**时才存在 —— 用无头脚本遍历侧边栏会话
+（`[data-pane="sidebar"]` 里的会话行逐个点）找 `document.querySelectorAll('[class*="md-code-block"]').length > 0` 的那个。
+
+## 7. 表格：托底层撑满整栏 vs 表格贴内容宽度
+壳层有两套表格形状（都在官方的 `_tableScroll_*` / `_tableFill_*` 模块里）：
+```css
+._tableScroll table { width: max-content; max-width: max-content; }  /* 贴内容 */
+._tableFill    table { width: 100%;      max-width: none; }          /* 撑满整栏 */
+```
+`class="_tableScroll_kcgor_190 _tableFill_kcgor_236"` 这种**同时带两个类**的表会走「撑满」。
+而我们的托底写在**外层容器**上，容器是 block → 也撑满 → 表格只占 528px 时，
+旁边空出 **约 300px 的空玻璃**（用户 2026-09-11：「都超出了我规定拖拽可控的宽度」）。
+
+**修法（两条一起）**：
+```css
+[class*="markdown"] [class*="tableFill"] table { width: max-content; max-width: 100%; }  /* 表格贴内容 */
+[class*="markdown"] [class*="tableScroll"] { width: fit-content; max-width: 100%; margin-inline: auto; }  /* 托底跟着收 */
+```
+实测 托底 829 → 548px（表格 528 + 内边距）；宽表仍由容器自身 `overflow-x:auto` 横向滚动。
+
+**「内容列」的宽度上限**由 `--dsh-chat-content-width` 决定：
+`.wSkVaW_root { --dsh-chat-content-width: var(--dsh-chat-user-width, clamp(680px, calc(var(--dsh-conversation-column-width,0px) * .64), 920px)) }`，
+落在 `.EvIC1a_column { max-width: var(--dsh-chat-content-width); width:100%; margin:0 auto }`（本机实测 829.44px）。
+判断「有没有超宽」就以这个 column 的左右边界为基准量。
+
 ## 通用教训
 
 给 `[class*="…"]` 加视觉属性前，先看这条选择器会不会同时命中**同一子树里的多层**；要「只留一层」就得连内层一起重置。跨构建哈希选择器优先加作用域或改用语义属性。
+
+**首选顺序**：语义属性（`data-turn-process` / `data-slot` / `data-dsh-*`）> 哈希 + `[data-slot="main.conversation"]` 作用域 > 哈希 + `:not()` 排除。
+本机多个坑（turnStatus、callRow、`l_V-RG_`）的共同点都是**当初图省事写了 `[class*="X_"]`**，
+事后靠 `:not()` 补漏；有语义属性时应当直接换掉，`:not()` 只是没有语义属性时的退路。

@@ -68,14 +68,34 @@
 
 构建/门禁（只需该包依赖时）：`corepack pnpm install --filter "@linxin666/dsh-client-ui-skin-center..."`（2m33s，且 `prepare` 会跑 `tsdown` 顺带验证编译），然后 `typecheck` 与 `test`（本次 **35 files / 618 tests passed**）。
 
-## 六、本目录内容
+## 六、提交状态（2026-09-11）
+
+| 条目 | 状态 |
+|---|---|
+| [issue #1469](https://github.com/zhu1090093659/dsh-web/issues/1469) 气泡模糊滑杆提案 | **open**，正文按 `standard_issue.yml` 表单逐节填写，标签 `enhancement, area/skins` |
+| [PR #1468](https://github.com/zhu1090093659/dsh-web/pull/1468) blue-fantasy 文字可读性层 | **已合并**（merge commit `bf1e40e`） |
+| [PR #1476](https://github.com/zhu1090093659/dsh-web/pull/1476) 后续：联动滑杆 / 代码块毛玻璃 / 表格托底收窄 / 过程行去双层 / 窗口外框底色 | **open**，7 文件 +418 −52；门禁 5 项 + `CI checks` + `plugin-mount` **全绿** |
+| 分支 `feat/skin-center-bubble-blur`（fork `A8Chann/dsh-web`） | 备用，等 #1469 有回音；源码补丁见下表 |
+
+> ⚠️ **#1466 是被机器人关掉的废稿**（第一次用最小 payload 试通道，未按模板填写）。教训写进第七节。
+
+## 七、本目录内容
 
 | 文件 | 说明 |
 |---|---|
 | `skin-center-bubble-blur/0001-…patch` | 可直接 `git apply` 的源码补丁（**11 文件 / +109 −3**，含 5 个测试文件） |
 | `skin-center-bubble-blur/ISSUE-BODY.md` | 已提交的 Issue 正文（= [#1469]） |
 | `skin-center-bubble-blur/PR-BODY.md` | 备好的 PR 正文（等维护者点头后可直接用） |
-| `blue-fantasy-readability/readability-subset.css` | 提交给上游的 166 行可读性子集（固定 alpha + 语义锚点） |
-| `blue-fantasy-readability/PR-BODY.md` | 已提交的 PR 正文（= [#1468]） |
+| `blue-fantasy-readability/readability-subset.css` | 首版 PR 提交的 166 行可读性子集 |
+| `blue-fantasy-readability/PR-BODY.md` | 首版 PR 正文（= [#1468]，正文已更新为后续说明） |
+| `blue-fantasy-readability/PR2-BODY.md` | 后续 PR 正文（= [#1476]） |
 
 遗留：上游合入并发布后，记得撤掉本地那份**产物级**热修 —— `node scripts\skin-center-bubble-blur.mjs --revert`，避免同一功能两处实现。
+
+## 八、Issue 表单机器人（2026-09-11 教训）
+
+- 仓库的 Issue 表单是 GitHub **form**（`.yml`），并有机器人校验「必填部分是否齐全」。
+- **先用最小 payload 在真仓库试通道 → 机器人 14 秒后按「未使用模板」自动关闭**，且**API 无法重开**（`PATCH state=open` 返回空壳 422、`errors: []`）。
+- 正确做法：**payload 一次写全**（按表单逐节），用 Node 生成 JSON 再 `curl --data-binary`（PS 5.1 的 `ConvertTo-Json` 会把 3 KB 中文膨胀到 450 KB → 422）。
+- 手滑建了废条目时：它**删不掉**，在下面留言指向新条目即可。
+

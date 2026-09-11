@@ -3,7 +3,7 @@
 DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GUI，自动拉起后端、自绘标题栏、托盘、本地 HTTP 控制服务。
 
 > **本文件是「热上下文」，每轮都会注入，必须保持精简（目标 < 12 KB）。**
-> 详细经验、实测数值、历史方案与踩坑记录**一律写进 `.dsh/skills/<主题>/SKILL.md`**，
+> 详细经验、实测数值、历史方案与踩坑记录**一律写进项目目录 `.dsh/skills/<主题>/SKILL.md`（即 `D:\HTML\DSH_Desktop\.dsh\skills\...`，不是 `~/.dsh/skills`，也不是别处）**，
 > 由技能目录按需加载；**不要再往本文件追加长段落**。
 > 新增经验时：先看下面「技能索引」有没有对应主题，有就更新那个 SKILL.md。
 
@@ -31,6 +31,8 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 
 ## 技能索引（按需加载，不要在本文件里展开）
 
+> 本表所有技能文件都存于**本项目** `.dsh/skills/<主题>/SKILL.md`（即 `D:\HTML\DSH_Desktop\.dsh\skills\...`）；找技能只来项目目录这里找，不要搜 `~/.dsh/skills` 或其它位置。
+
 | 场景 | skill |
 |---|---|
 | tauri dev 工作流、debug 产物 | `tauri-dev` |
@@ -48,7 +50,7 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 | 插件安装/升级、冷静期、兼容性 | `web-plugin-upgrade` |
 | 第三方插件本地打补丁 | `plugin-local-patch` |
 | memos-cloud 插件兼容 | `memos-cloud-plugin` |
-| Command Code provider（思考强度） | `commandcode-provider` |
+| Command Code provider（思考强度；tool 结果图片触发顺序「insufficient tool messages」400 补丁） | `commandcode-provider` |
 | cost-meter 的 CommandCode 面板 | `cost-meter-commandcode` |
 | cost-meter 图框与 Go 版式对齐 | `cost-meter-plan-box` |
 | 会话迁移 bug | `session-migration` |
@@ -69,7 +71,8 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 - `assets/skins/blue-fantasy/` —— 皮肤成品 + 上游基准 + provenance 快照。
 - `assets/upstream-pr/` —— 待提交给皮肤中心上游的 PR 材料。
 - `scripts/` —— 补丁与验证工具：`cost-meter-plan-box.mjs`、`skin-center-bubble-blur.mjs`、
-  `skin-patches.ps1`、`cdp/`（无头验证三件套）。
+  `skin-patches.ps1`、`session-log.mjs`（多帧 zstd 会话日志：`frames`/`dump`/`raw`/`scan`）、
+  `verify-toolimg-patch.mjs`、`cdp/`（无头验证三件套）。
 - 这些用 `AGENTS.md.bak-*` 之类**不要**再堆在根目录。
 
 ## 会话协作约定
