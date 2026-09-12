@@ -68,16 +68,17 @@
 
 构建/门禁（只需该包依赖时）：`corepack pnpm install --filter "@linxin666/dsh-client-ui-skin-center..."`（2m33s，且 `prepare` 会跑 `tsdown` 顺带验证编译），然后 `typecheck` 与 `test`（本次 **35 files / 618 tests passed**）。
 
-## 六、提交状态（2026-09-11）
+## 六、提交状态（2026-09-13）
 
 | 条目 | 状态 |
 |---|---|
-| [issue #1469](https://github.com/zhu1090093659/dsh-web/issues/1469) 气泡模糊滑杆提案 | **open**，正文按 `standard_issue.yml` 表单逐节填写，标签 `enhancement, area/skins` |
+| [issue #1469](https://github.com/zhu1090093659/dsh-web/issues/1469) 气泡模糊滑杆提案 | **已关闭（completed）**，维护者 @Aa728848 明确邀请提 PR，指定基线 `dev`、按模板填、无 Emoji |
 | [PR #1468](https://github.com/zhu1090093659/dsh-web/pull/1468) blue-fantasy 文字可读性层 | **已合并**（merge commit `bf1e40e`） |
-| [PR #1476](https://github.com/zhu1090093659/dsh-web/pull/1476) 后续：联动滑杆 / 代码块毛玻璃 / 表格托底收窄 / 过程行去双层 / 窗口外框底色 | **open**，7 文件 +418 −52；门禁 5 项 + `CI checks` + `plugin-mount` **全绿** |
-| 分支 `feat/skin-center-bubble-blur`（fork `A8Chann/dsh-web`） | 备用，等 #1469 有回音；源码补丁见下表 |
+| [PR #1476](https://github.com/zhu1090093659/dsh-web/pull/1476) 后续：联动滑杆 / 代码块毛玻璃 / 表格托底收窄 / 过程行去双层 / 窗口外框底色 | **已合并** |
+| [PR #1516](https://github.com/zhu1090093659/dsh-web/pull/1516) 气泡模糊程度滑杆（`bubbleBlur`） | **open**，19 文件 +261 −16，基于 `dev` 尖端；**9 项检查全绿**（含 `CI checks` / `libs:check`） |
 
-> ⚠️ **#1466 是被机器人关掉的废稿**（第一次用最小 payload 试通道，未按模板填写）。教训写进第七节。
+> ⚠️ **#1466 是被机器人关掉的废稿**（第一次用最小 payload 试通道，未按模板填写）。教训见第七节。
+> ⚠️ **#1516 首轮被 `Validate PR contribution evidence` 驳回** —— 原因与修法见第八节。
 
 ## 七、本目录内容
 
@@ -85,14 +86,46 @@
 |---|---|
 | `skin-center-bubble-blur/0001-…patch` | 可直接 `git apply` 的源码补丁（**11 文件 / +109 −3**，含 5 个测试文件） |
 | `skin-center-bubble-blur/ISSUE-BODY.md` | 已提交的 Issue 正文（= [#1469]） |
-| `skin-center-bubble-blur/PR-BODY.md` | 备好的 PR 正文（等维护者点头后可直接用） |
+| `skin-center-bubble-blur/PR-BODY.md` | 已提交的 PR 正文（= [#1516]） |
 | `blue-fantasy-readability/readability-subset.css` | 首版 PR 提交的 166 行可读性子集 |
 | `blue-fantasy-readability/PR-BODY.md` | 首版 PR 正文（= [#1468]，正文已更新为后续说明） |
 | `blue-fantasy-readability/PR2-BODY.md` | 后续 PR 正文（= [#1476]） |
 
-遗留：上游合入并发布后，记得撤掉本地那份**产物级**热修 —— `node scripts\skin-center-bubble-blur.mjs --revert`，避免同一功能两处实现。
+遗留：**#1516 合入并发布后**，记得撤掉本地那份**产物级**热修 —— `node scripts\skin-center-bubble-blur.mjs --revert`，避免同一功能两处实现。
 
-## 八、Issue 表单机器人（2026-09-11 教训）
+## 八、PR 被自动检查驳回的两个坑（2026-09-13 实测）
+
+### 1. 「本地验证」的标签后必须紧跟冒号
+`pr-contribution-rules.yml` 的 `readValidationPart` 用
+`执行的命令\s*[：:]([\s\S]*?)(?=\n\s*结果摘要\s*[：:])` 取值。
+写成 **`结果摘要（全部通过）：`** 会让 `结果摘要\s*[：:]` 匹配失败 →
+**两段都被判空** → 报「请填写 本地验证 中的执行的命令与结果摘要」。
+
+- 只能写 `结果摘要：`，括号说明挪到正文里。
+- 本地 `scripts/pr-review.mjs` 的实现**更宽松**（标签后允许括号），所以**本地自检过 ≠ CI 过**。
+  要按 CI 的正则自检，可直接复用 `pr-contribution-rules.yml` 里的那几行 JS。
+
+### 2. 推「基于最新 dev 的分支」需要 token 有 `workflow` 权限
+上游在旧基线之后的 60 个提交里改了 `.github/workflows/ci.yml`，而 fork 的 `dev` 还停在旧版。
+于是**任何包含新 ci.yml 的推送都会被拒**：
+
+```
+refusing to allow a Personal Access Token to create or update workflow
+`.github/workflows/ci.yml` without `workflow` scope
+```
+
+- 连 **GitHub 自己的 fork 同步**（`POST /repos/{owner}/{repo}/merge-upstream`）也会被同一限制拒（HTTP 422），
+  因为它在服务端做的是 fast-forward、同样要写 workflow 文件。
+- 新建分支名也拦（不是"更新既有分支"才拦）。
+- 解法：经典 PAT 勾 **`repo` + `workflow`**；或改用 **SSH 推送**（不受 PAT scope 限制）。
+- 校验是否已生效：`curl -sI -H "Authorization: token $T" https://api.github.com/user | grep -i x-oauth-scopes`。
+
+### 3. 顺带：`libs:check` 决定了分支必须基于新 dev
+CI 第 66 行跑 `pnpm libs:check`。`skin-center` 与 `dsh-web-all` 都**入库 lib 产物**，
+且 `dsh-web-all` 把 skin-center 的 `src/client` 内联进自己的 bundle。
+所以改 skin-center 源码后必须 `pnpm build` + `node scripts/lib-artifact-check.mjs --write`
+并把重建的 `lib/` 与 `scripts/lib-artifact-fingerprints.json` 一起提交；
+**用旧基线重建的 lib 合并进 dev 后会立刻变 stale**，因此不能靠"旧基线 + lib"绕过推送限制。
 
 - 仓库的 Issue 表单是 GitHub **form**（`.yml`），并有机器人校验「必填部分是否齐全」。
 - **先用最小 payload 在真仓库试通道 → 机器人 14 秒后按「未使用模板」自动关闭**，且**API 无法重开**（`PATCH state=open` 返回空壳 422、`errors: []`）。
