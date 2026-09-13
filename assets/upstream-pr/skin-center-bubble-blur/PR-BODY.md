@@ -131,6 +131,7 @@ pnpm sync-shared:check && pnpm runtime-deps:check && pnpm test:scripts
 | body 变量 | `--dsh-skin-bubble-blur`（如 `10px`），与 `--dsh-skin-bubble-alpha` 并列 |
 | 可选性 | 皮肤不读该变量 = 零变化；宿主侧为纯新增可选字段，旧配置无需迁移 |
 | 主开关 | 皮肤中心关闭时移除该变量（与既有 alpha 一致） |
+| 皮肤侧配比 | blue-fantasy 的用户气泡按 **120%** 消费该变量（`blur(calc(var(--dsh-skin-bubble-blur, 10px) * 1.2))`）：默认 10px 正好还原它原本手调的 12px，拖旋钮等比缩放。与它上方 alpha 的 120% 取同一思路——那是这两个维度原有的、有意的层级差。 |
 
 皮肤侧用法（即使没有本 PR，靠 fallback 也成立）：
 
@@ -148,6 +149,19 @@ backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
 - `src/client/locales.ts` — 键联合类型 + `en` / `zh` 词条
 - 测试 — `background.spec.ts`（新增 “applies, persists, and cleans up message bubble blur”，并补默认值与 snapshot 断言）、`background-migration.spec.ts`、`background-scope.spec.ts`、`skin-center-custom-theme.spec.tsx`（handle mock + 滑块交互用例）、`routes-v2.spec.ts`（区间夹紧覆盖）
 - 重建产物 — `packages/skins/skin-center/lib/`、`packages/dsh-web-all/lib/`、`scripts/lib-artifact-fingerprints.json`
+- blue-fantasy `patches.css` — 用户气泡的模糊改为 `calc(var(--dsh-skin-bubble-blur, 10px) * 1.2)`（见下）与 `market/dist` 产物
+
+## 评审修改（Review follow-up）
+
+@zhu1090093659 指出：blue-fantasy 的用户气泡原本是 `blur(var(--dsh-skin-bubble-blur, 12px))`，靠 fallback 拿到比别人（10px）更深的一档；本 PR 让变量真正落到 body 后 fallback 失效，默认下用户气泡会掉到 10px，旋钮还会把两档拉平。已按其建议改为与 alpha 对齐的 120% 配比：
+
+| `--dsh-skin-bubble-blur` | 用户气泡 | 其余托底 |
+| --- | --- | --- |
+| 未设置（fallback） | **12px** | 10px |
+| `18px` | **21.6px** | 18px |
+| `6px` | **7.2px** | 6px |
+
+（无头 Edge 实测 computed `backdrop-filter`）
 
 ## 备注（Notes）
 
