@@ -437,16 +437,21 @@ body[data-ds-dark-theme] [class*="markdown"] [class*="tableScroll"] {
    位于 [data-turn-tail] 内的 actions 行（MessageIconActions），
    给整行垫白底模糊，避免图标贴在插画上看不清。
 
-   ⚠️ 托底必须用 ::before 画，**不能给行本身加 padding**：
-   这行在官方布局里是「助手尾部左对齐满宽 / 用户气泡右对齐贴边」，
-   一旦加 `padding: 0 8px`，左对齐的行图标整体右移 8px、右对齐的则左移 8px
-   —— 实测助手行首图标 502→510、用户行 1310→1302，用户反馈「位置歪了」。
-   现在只保留 `width: fit-content`（让托底贴合图标，且不位移），
-   托底改由 ::before 向外扩 8px 绘制，图标位置与官方逐像素一致。 */
+   ⚠️ 托底必须用 ::before 画，**不要给行本身加 backdrop-filter**：
+   官方把 hover 提示气泡（`SPAN._bubble_*`，position:fixed）**渲染在这一行内部**，
+   而行上一旦有 backdrop-filter，该行就会成为 fixed 后代的包含块（CSS 规范），
+   tooltip 便不再以视口定位 → 从按钮旁 1310,336 跳到 1524,748，跑到屏幕另一头。
+   故把底色/模糊移到 `::before`（行自身保持干净），tooltip 恢复正位。
+
+   `padding: 0 8px` 与 `width: fit-content` 是**上游原有**的取值，原样保留 ——
+   托底尺寸与图标位置都与改动前完全一致（::before 用 `inset: 0` 贴合行盒）。
+   注意这会带来 8px 的图标偏移（助手行首图标 502→510、用户行 1310→1302），
+   这是上游既有行为，**不要**顺手"修正"，否则行宽和图标会一起变。 */
 [data-turn-tail] [class*="actions"],
 [data-chat-flow-kind="user"] [class*="actions"],
 [data-chat-flow-kind="steering"] [class*="actions"] {
   position: relative;
+  padding: 0 8px;
   width: fit-content;
 }
 
@@ -455,7 +460,7 @@ body[data-ds-dark-theme] [class*="markdown"] [class*="tableScroll"] {
 [data-chat-flow-kind="steering"] [class*="actions"]::before {
   content: "";
   position: absolute;
-  inset: 0 -8px;
+  inset: 0;
   z-index: -1;
   border-radius: 10px;
   background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));

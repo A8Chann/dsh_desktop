@@ -190,20 +190,31 @@ DIV.xzv4MW_actions                      ← 操作行（复制/点赞/点踩/重
 /* ✅ 行自身保持干净，只保留不影响定位的 width */
 [data-turn-tail] [class*="actions"], ... {
   position: relative;      /* 仅供 ::before 定位；position:relative 不影响 fixed */
+  padding: 0 8px;          /* 上游原值，原样保留 —— 见下方「只改必要的那一处」 */
   width: fit-content;
 }
 [data-turn-tail] [class*="actions"]::before, ... {
-  content: ""; position: absolute; inset: 0 -8px; z-index: -1;
+  content: ""; position: absolute; inset: 0; z-index: -1;
   border-radius: 10px;
   background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
   backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
 }
 ```
 
-**顺带**：给这一行加 `padding: 0 8px` 还会**移动图标** —— 该行在官方布局里
-「助手尾部左对齐满宽 / 用户气泡右对齐贴边」，左对齐的右移 8px、右对齐的左移 8px
-（实测助手行首图标 502→510、用户行 1310→1302）。用 `::before` 向外扩 `-8px` 即可
-得到同样的视觉留白而**零位移**。
+### ⚠️ 只改必要的那一处，别顺手"修正"icon 偏移
+上面那条 `padding: 0 8px` 确实会让图标偏移 8px（该行在官方布局里
+「助手尾部左对齐满宽 / 用户气泡右对齐贴边」，左对齐的右移 8px、右对齐的左移 8px；
+实测助手行首图标 502→510、用户行 1310→1302）。
+
+**但这是上游既有行为，不是 bug。** 2026-09-14 我顺手把 padding 去掉（以为在修"歪"），
+用户立刻要求还原：**「我只要求改了 hover 弹窗的 bug 和样式」** ——
+去掉 padding 让行盒窄了 16px（助手 475→459、用户 95→79），行宽和图标一起变了。
+
+**教训**：诊断出 A（tooltip 跑飞，真 bug）和 B（图标偏移，既有设计）两件事时，
+**只修用户报的 A**；把 B 顺手"修掉"= 未经授权的可见变更。
+真要修 B 应当先说明、再动手。改回后台账：
+`padding: 0 8px` + `width: fit-content`（上游原值）+ `::before { inset: 0 }`（贴合行盒），
+行宽/图标与改动前逐像素一致，tooltip 依旧正位。
 
 **排查手法（可复用）**：遍历我们所有带 `backdrop-filter` 的规则，对每个命中元素
 查 `[...e.querySelectorAll('*')].filter(d => getComputedStyle(d).position === 'fixed')`
