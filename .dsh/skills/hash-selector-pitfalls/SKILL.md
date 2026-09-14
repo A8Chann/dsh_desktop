@@ -168,6 +168,51 @@ html[data-dsh-backdrop-active][data-dsh-conversation-content] [data-composer-car
 排查手法：遍历 `document.styleSheets`，打印所有 `el.matches(selectorText)` 且带
 `backdrop-filter` 的规则 —— 一眼就能看出是谁用 `!important` 赢的。
 
+## 9. ⭐ `backdrop-filter` 会创建 `position: fixed` 后代的包含块（tooltip 跑飞）
+**这是本仓库最隐蔽的一类坑**（2026-09-14 用户报「hover 后的提示气泡歪了」）。
+
+官方把 tooltip 直接渲染在**按钮所在行内部**：
+
+```
+DIV.xzv4MW_actions                      ← 操作行（复制/点赞/点踩/重新生成）
+  └ SPAN._bubble_1nw3t_1「复制」  position: fixed   ← tooltip 就在行内！
+```
+
+给这一行加 `backdrop-filter` 之后，该行就会成为 **`position: fixed` 后代的包含块**
+（CSS 规范：`transform` / `perspective` / `filter` / `backdrop-filter` /
+`contain: paint|layout|strict` / `will-change: transform|filter` 都会）。
+于是 tooltip 不再以**视口**定位，而是以这一行（几十像素的小盒子）为基准 →
+实测从按钮旁 `1310,336` 直接跳到 `1524,748`，跑到屏幕另一头。
+
+**修法：托底交给 `::before` 画，元素本身不要沾这些属性。**
+
+```css
+/* ✅ 行自身保持干净，只保留不影响定位的 width */
+[data-turn-tail] [class*="actions"], ... {
+  position: relative;      /* 仅供 ::before 定位；position:relative 不影响 fixed */
+  width: fit-content;
+}
+[data-turn-tail] [class*="actions"]::before, ... {
+  content: ""; position: absolute; inset: 0 -8px; z-index: -1;
+  border-radius: 10px;
+  background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+}
+```
+
+**顺带**：给这一行加 `padding: 0 8px` 还会**移动图标** —— 该行在官方布局里
+「助手尾部左对齐满宽 / 用户气泡右对齐贴边」，左对齐的右移 8px、右对齐的左移 8px
+（实测助手行首图标 502→510、用户行 1310→1302）。用 `::before` 向外扩 `-8px` 即可
+得到同样的视觉留白而**零位移**。
+
+**排查手法（可复用）**：遍历我们所有带 `backdrop-filter` 的规则，对每个命中元素
+查 `[...e.querySelectorAll('*')].filter(d => getComputedStyle(d).position === 'fixed')`
+—— 命中即有问题。验证 tooltip 是否正位，看它的**包含块是否为视口**
+（上溯第一个有 `transform/filter/backdrop-filter/contain` 的祖先应为 `null`）。
+
+⚠️ 探 tooltip 时注意**排除宠物对话气泡**（`.kz2Bea_*`，也是 `fixed`），否则会误判；
+且要先确认按钮 `getBoundingClientRect().top > 0`（滚出视口的负数坐标 hover 不到）。
+
 ## 通用教训
 
 给 `[class*="…"]` 加视觉属性前，先看这条选择器会不会同时命中**同一子树里的多层**；要「只留一层」就得连内层一起重置。跨构建哈希选择器优先加作用域或改用语义属性。
