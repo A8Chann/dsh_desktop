@@ -76,15 +76,22 @@
 | [PR #1468](https://github.com/zhu1090093659/dsh-web/pull/1468) blue-fantasy 文字可读性层 | **已合并**（merge commit `bf1e40e`） |
 | [PR #1476](https://github.com/zhu1090093659/dsh-web/pull/1476) 后续：联动滑杆 / 代码块毛玻璃 / 表格托底收窄 / 过程行去双层 / 窗口外框底色 | **已合并** |
 | [PR #1516](https://github.com/zhu1090093659/dsh-web/pull/1516) 气泡模糊程度滑杆（`bubbleBlur`） | **已合并**（merge `ffedeae`，维护者先 APPROVED 再合并）；随 **0.3.22** 发布 |
-| [PR #1562](https://github.com/zhu1090093659/dsh-web/pull/1562) 修 blue-fantasy 操作行的 hover 气泡跑飞（`backdrop-filter` 劫持 fixed 定位） | **open**，7 文件 +73 −19；CI 全绿 |
-| [PR #1563](https://github.com/zhu1090093659/dsh-web/pull/1563) 浮层配色与面板层次（气泡 / hover 卡 / 队列 dock / 答题卡 / 右栏与底部面板） | **open**，6 文件 +337 −7；CI 全绿 |
-| [PR #1564](https://github.com/zhu1090093659/dsh-web/pull/1564) 输入区配件与顶栏改读正确变量（输入卡模糊 / 背景遮挡） | **open**，6 文件 +313 −7；CI 全绿（首轮 `CI checks` 撞上 `dsh-remote-web-ui` 的 `loopback-proxy` 偶发失败，空提交重跑即过） |
+| [PR #1562](https://github.com/zhu1090093659/dsh-web/pull/1562) 修 blue-fantasy 操作行的 hover 气泡跑飞（`backdrop-filter` 劫持 fixed 定位） | **已被关闭**，维护者：`提交issues，目前不接修复PR` |
+| [PR #1563](https://github.com/zhu1090093659/dsh-web/pull/1563) 浮层配色与面板层次（气泡 / hover 卡 / 队列 dock / 答题卡 / 右栏与底部面板） | **已被关闭**，同上 |
+| [PR #1564](https://github.com/zhu1090093659/dsh-web/pull/1564) 输入区配件与顶栏改读正确变量（输入卡模糊 / 背景遮挡） | **已被关闭**，同上 |
+| issue [#1571](https://github.com/zhu1090093659/dsh-web/issues/1571) 操作行 hover 气泡跑飞 | **open**（原来的 #1565 被模板校验器关单，见第九节） |
+| issue [#1572](https://github.com/zhu1090093659/dsh-web/issues/1572) 队列 dock 两层底 + 每边宽 8px | **open** |
+| issue [#1573](https://github.com/zhu1090093659/dsh-web/issues/1573) 右侧面板叠两层 / 分割线不一致 / 底部面板竖线断层 | **open** |
+| issue [#1574](https://github.com/zhu1090093659/dsh-web/issues/1574) 气泡与 hover 卡用未做主题区分的固定色 | **open** |
+| issue [#1569](https://github.com/zhu1090093659/dsh-web/issues/1569) 答题卡缺毛玻璃 | **open** |
+| issue [#1570](https://github.com/zhu1090093659/dsh-web/issues/1570) 配件与顶栏的变量归属 | **open** |
 
-> 三个 PR 互不重叠：#1562 只动操作行托底的绘制方式；#1563 动浮层与面板；#1564 动配件与顶栏的变量归属。
-> 合并顺序任意，但同一个文件 `patches.css`，第二个合入的需要 rebase —— **用户偏好拆开提**（2026-09-14 确认）。
+> 三个 PR 互不重叠，且 **CI 全绿、mergeable**，但**仍被维护者以「目前不接修复 PR」整体关闭**（2026-09-14）。
+> 结论：本仓库当前只走 issue 流程，先提 issue 等邀请，不要再直接提修复 PR。内容已按 issue 全部重新提交（见上表）。
 
 > ⚠️ **#1466 是被机器人关掉的废稿**（第一次用最小 payload 试通道，未按模板填写）。教训见第七节。
 > ⚠️ **#1516 首轮被 `Validate PR contribution evidence` 驳回** —— 原因与修法见第八节。
+> ⚠️ **#1565–#1568 是被 issue 模板校验器关掉的**（API 提交绕不过标签竞态）。原因与绕法见第九节。
 > 💡 **#1562 首轮就过**，因为正文按第八节第 1 条把「结果摘要：」后面的括号去掉了。
 
 ## 六之二、上线收尾（2026-09-14 完成）
@@ -159,4 +166,38 @@ CI 第 66 行跑 `pnpm libs:check`。`skin-center` 与 `dsh-web-all` 都**入库
 - **先用最小 payload 在真仓库试通道 → 机器人 14 秒后按「未使用模板」自动关闭**，且**API 无法重开**（`PATCH state=open` 返回空壳 422、`errors: []`）。
 - 正确做法：**payload 一次写全**（按表单逐节），用 Node 生成 JSON 再 `curl --data-binary`（PS 5.1 的 `ConvertTo-Json` 会把 3 KB 中文膨胀到 450 KB → 422）。
 - 手滑建了废条目时：它**删不掉**，在下面留言指向新条目即可。
+
+## 九、issue 模板校验器的「标签竞态」（2026-09-14 实测）
+
+**症状**：用 API 按 `bug_report.yml` 的九个 `###` 段全填好提交（`labels: ["bug"]`），
+几秒后被 `issue-template-enforcer` 自动关闭，评论里**没有**「缺少或为空的必填部分」那行，
+只有最后一句「Bug 报告必须附带 bug 标签」——即**九个段全认出来了，只差标签**。
+
+**根因**（时间线取证）：
+
+```
+10:57:47  commented / assigned   by github-actions[bot]       ← 校验器开始
+10:57:48  closed  reason=not_planned  by github-actions[bot]  ← 校验器关单
+10:57:49  labeled  label=bug  by github-actions[bot]          ← auto-labeler 才补上
+```
+
+- **`labels` 参数对没有 push 权限的提交者会被静默忽略**（GitHub 文档：设置 issue 标签需要 push 权限）。
+  我传了 `["bug"]`，创建时根本没挂上，时间线里也没有我这个作者的 `labeled` 事件。
+- `bug` 是 `auto-label-issues` 从标题 `[Bug]: ` 推出来的，**晚 1 秒**。
+- 校验器 `on: [opened, reopened]`，在 `opened` 那一刻查 `issue.labels`，必然查不到 → 必关。
+
+**绕法**：改从 `standard_issue.yml` 那条路提交（`### Issue 类型` 写 `问题`），
+标题仍以 `[Bug]: ` 开头让 auto-labeler 补标签，正文里照样附
+`Bug 截图` / `冒烟测试` / `引用代码`（多写的段不影响校验）。
+这样 `isBug = (类型==='bug 报告') || hasBugLabel` 在两种时序下都成立：
+- 标签先到 → 走 bug 分支，九个段齐全 → 过；
+- 标签后到 → 走非 bug 分支，只需六个基础段 → 也过。
+
+**顺带记牢**：
+- 重开被机器人关掉的 issue：`PATCH {"state":"open"}` → 422（`errors: []`）；
+  GraphQL `reopenIssue` → `UNPROCESSABLE: Could not reopen the issue.`。**两条路都不通**，别浪费时间。
+- 给自己提的 issue 补标签：`POST /issues/{n}/labels` → 403 `Must have admin rights`。同样不通。
+- 所以被误关的 issue 只能重提一条（旧的删不掉，正文里说明「以本条为准」）。
+- 结论：**本仓库当前只走 issue 流程**（维护者原话「目前不接修复PR」）——
+  先提 issue 等邀请，别再直接提修复 PR。
 
