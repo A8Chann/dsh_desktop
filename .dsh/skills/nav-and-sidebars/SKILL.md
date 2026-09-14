@@ -8,22 +8,36 @@ description: >
 
 ## 左侧栏底色（基准色）
 
-`[data-pane="sidebar"]` 的 computed `backgroundColor` = **`rgba(242,245,250,.75)`**（实测值）。顶部导航栏与右侧栏面板统一用这个色 + `.75`：
+颜色直接取壳层 token **`--dsw-specific-sidebar-fill`** —— 左侧导航栏用的就是它，且**自带主题切换**：
+```
+亮  rgba(242, 245, 250, calc(1 - <背景遮挡> * .5))     ← 通道 242/245/250
+暗  rgba(29,  37,  57,  calc(1 - <背景遮挡> * .45))    ← 通道 29/37/57
+```
 
 ```css
 [data-slot="main.conversation"] header,
 [data-slot="rightbar.session"] > *,
 [class*="rightbarCol"] [class*="panel"] {
-  background: rgba(242,245,250,.75);
+  background: rgb(from var(--dsw-specific-sidebar-fill) r g b / calc(0.95 - var(--dsw-skin-scrim, .5) * 0.5));
 }
 ```
+- **颜色**用相对颜色语法取 token 的 `r g b` → 清爽地跟着主题走，**一条规则覆盖亮/暗**，不用再写 `body[data-ds-dark-theme]` 变体。
+- **alpha** 自己给：**线性联动「背景遮挡」`--dsw-skin-scrim`，0.95 → 0.45**（遮挡 0 → 0.95，遮挡 1 → 0.45）。2026-09-14 用户定。
+- 顶部另有 1px 分隔线（亮 `rgba(28,37,70,.08)` / 暗 `border-bottom-color: rgba(160,180,230,.12)`）。
 
-顶部另有 1px 分隔线。深色主题：`rgba(16,22,42,.75)`。
+### ⚠️ alpha 跟「背景遮挡」，**不跟**「气泡不透明度」
+2026-09-11 用户明确：「气泡不透明度不应该联动顶部导航和右侧边栏」。外框是框架不是气泡。
+- 曾经写成 `rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.5))`，被否掉。
+- 也曾短暂写成**固定** `.75`；2026-09-14 用户改要求：**跟「背景遮挡」**（0.95→0.45）。
+- 验证方法：把 `--dsh-skin-bubble-alpha` 设成 `0 / .9` → 导航栏与右侧栏**不变**；
+  把 `--dsw-skin-scrim` 设成 `0 / .5 / 1` → 应得 `.95 / .7 / .45`。
 
-### ⚠️ 外框用**固定** 0.75，不要跟随 `--dsh-skin-bubble-alpha`
-2026-09-11 用户明确：「气泡不透明度不应该联动顶部导航和右侧边栏」。外框是框架不是气泡 —— 拖动气泡滑杆时导航栏/右侧栏必须**纹丝不动**。
-- 曾经写成 `rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.5))`（默认 50% 时正好 .75），被用户否掉，已改回固定 `rgba(242,245,250,.75)`。
-- 验证方法：把 `--dsh-skin-bubble-alpha` 依次设成 `0.9 / 0.1 / 0`，导航栏与右侧栏应**始终** `.75`，而正文托底跟着变。
+### ⚠️ 删规则时别留**孤立逗号**
+2026-09-14 我删掉旧的深色 `background` 规则时留下一个只有 `,` 的行，把它后面那条
+`body[data-ds-dark-theme] … header { border-bottom-color: … }` 的选择器列表变成非法 →
+**整条规则被浏览器静默丢弃**（暗色分隔线失效），而 `{`/`}` 计数、括号配平全都看不出来。
+- 删规则后务必扫一遍 `^\s*,\s*$` 与 `^\}\s*,\s*$`；
+- 更稳的是**验证关键声明是否真的生效**（读 computed），别只看语法。
 
 ### hover 提示气泡（`[role="tooltip"]`）同属「外框」，也固定浓度
 壳层规则：`._bubble_1nw3t_1 { background: var(--dsw-alias-tooltip-bg); color: var(--dsw-static-neutral-bluish-00) }`。

@@ -559,7 +559,7 @@ body[data-ds-dark-theme] [data-chat-flow-kind="steering"] [class*="actions"]::be
 
 body[data-ds-dark-theme] [class*="cm-root"],
 body[data-ds-dark-theme] [class*="-NDN2W_root"] {
-  background: rgb(from var(--dsw-specific-input-major) 16 22 42 / alpha);
+  background: rgb(from var(--dsw-specific-input-major) 29 37 57 / alpha);
 }
 
 
@@ -589,7 +589,7 @@ body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.input.do
 body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.composer.dock"] > [data-composer-stats],
 body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.input.dock"] > [class*="cm-root"],
 body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.composer.dock"] > [class*="cm-root"] {
-  background: rgb(from var(--dsw-specific-input-major) 16 22 42 / alpha) !important;
+  background: rgb(from var(--dsw-specific-input-major) 29 37 57 / alpha) !important;
 }
 
 /* ═══ 补漏：对话中其余行 / 展开正文的毛玻璃（A+B 全量） ═══
@@ -735,7 +735,7 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] [data-turn-process] {
 }
 
 body[data-ds-dark-theme] [class*="cm-qchip"] {
-  background: rgb(from var(--dsw-specific-input-major) 16 22 42 / alpha);
+  background: rgb(from var(--dsw-specific-input-major) 29 37 57 / alpha);
 }
 
 [class*="cm-qchip"]:hover {
@@ -747,7 +747,7 @@ body[data-ds-dark-theme] [class*="cm-qchip"] {
 
 
 body[data-ds-dark-theme] [class*="cm-qchip"]:hover {
-  background-color: rgb(from var(--dsw-specific-input-major) 16 22 42 / alpha);
+  background-color: rgb(from var(--dsw-specific-input-major) 29 37 57 / alpha);
   background-image: linear-gradient(rgba(160, 185, 235, 0.08), rgba(160, 185, 235, 0.08));
 }
 
@@ -863,28 +863,23 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="producedRow"] 
 }
 
 
-/* ═══ 顶部导航栏（会话头部）与右侧侧边栏：颜色直接取「左侧导航栏」的实测色 ═══
-   左侧栏 `[data-pane="sidebar"]` 的 computed backgroundColor = rgba(242,245,250,.75)
-   （2026-09-10 实测；用户要求顶部/右侧栏「取左侧导航栏的颜色」，浓度 0.75）。
-   这里不再用纯白，改用同一基色 rgb(242,245,250) + .75，三栏观感统一。
+/* ═══ 顶部导航栏（会话头部）与右侧侧边栏 ═══
+   颜色：取 `--dsw-specific-sidebar-fill` —— 左侧导航栏用的那个 token，
+   亮 rgb(242,245,250) / 暗 rgb(29,37,57)，**自带主题切换**，所以深浅色共用一条规则
+   （2026-09-14 用户要求「改成同 sidebar-fill 的 29 37 57」）。
+   alpha：联动「背景遮挡」`--dsw-skin-scrim`，线性映射 **0.95 → 0.45**
+   （遮挡 0 → 0.95，遮挡 1 → 0.45），取代原先写死的 0.75。
+   仍**不跟**「气泡不透明度」滑杆 —— 外框是框架不是气泡（用户 2026-09-11 明确）。
    定位：顶部导航栏用 `<header>` 元素名 + `[data-slot="main.conversation"]`；
    右侧栏见下方注释（真面板是 `.panel`，两层 slot 宿主都是 display:contents）。 */
 [data-slot="main.conversation"] header,
 [data-slot="rightbar.session"] > *,
 [class*="rightbarCol"] [class*="panel"] {
-  /* 固定 0.75：外框是框架不是气泡，不跟随「气泡不透明度」滑杆
-     （用户 2026-09-11 明确要求）。 */
-  background: rgba(242, 245, 250, 0.75);
+  background: rgb(from var(--dsw-specific-sidebar-fill) r g b / calc(0.95 - var(--dsw-skin-scrim, .5) * 0.5));
 }
 
 [data-slot="main.conversation"] header {
   border-bottom: 1px solid rgba(28, 37, 70, 0.08);
-}
-
-body[data-ds-dark-theme] [data-slot="main.conversation"] header,
-body[data-ds-dark-theme] [data-slot="rightbar.session"] > *,
-body[data-ds-dark-theme] [class*="rightbarCol"] [class*="panel"] {
-  background: rgba(16, 22, 42, 0.75);
 }
 
 body[data-ds-dark-theme] [data-slot="main.conversation"] header {
@@ -922,7 +917,7 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] header {
    浓度取**固定值、不跟「气泡不透明度」滑杆**：提示气泡属于界面外框
    （与顶部导航栏、右侧栏同类），不是「文字背后的托底」——
    滑杆拉到 0 时它不该跟着一起消失。
-   基色仍与左栏同源：亮 rgb(242 245 250)、暗 rgb(16 22 42)；
+   基色仍与左栏同源：亮 rgb(242 245 250)、暗 rgb(29 37 57)；
    浓度取 .92，比导航栏的 .75 更实 —— 提示气泡直接压在内文上、只有一行字，需要更高对比。
    文字色亮色用皮肤主文字色、暗色用浅色；并描一条发丝边，
    避免浅底压在浅色插画上没边界。 */
