@@ -882,8 +882,15 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="producedRow"] 
    与其它面板同一层次。该 token 自带主题切换与遮挡联动，无需再写变体。
    分割线：官方给的是 `border-left: .5px solid var(--dsw-alias-border-l4)`，
    而左侧栏是 `border-right: .5px solid var(--dsw-alias-border-l3)` —— l4 比 l3 深一档
-   （实测 0.42 vs 0.32），两侧不一致；这里改成与左栏同色。 */
-[class*="rightbarCol"] [class*="panel"] {
+   （实测 0.42 vs 0.32），两侧不一致；这里改成与左栏同色。
+
+   ⚠️ 必须**只作用于最外层**：`[class*="panel"]` 会同时命中外层 `P3OORG_panel`
+   和它内部的 `P3OORG_panelBody`（两者都可见、尺寸几乎重合），
+   各上一层 0.75 的底 → 叠加后约 0.94，肉眼就是「颜色像是叠加了两次」
+   （用户 2026-09-14 反馈）。官方 CSS 只给外层上色，多出来的那层是我们加的。
+   `:not([class*="panel"] [class*="panel"])` = 排除「祖先里还有 panel」的元素，
+   即稳定地只选最外层，不依赖哈希名。 */
+[class*="rightbarCol"] [class*="panel"]:not([class*="panel"] [class*="panel"]) {
   background: var(--dsw-alias-bg-layer-1);
   border-left-color: var(--dsw-alias-border-l3);
 }

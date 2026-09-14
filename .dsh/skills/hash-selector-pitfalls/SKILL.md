@@ -224,6 +224,32 @@ DIV.xzv4MW_actions                      ← 操作行（复制/点赞/点踩/重
 ⚠️ 探 tooltip 时注意**排除宠物对话气泡**（`.kz2Bea_*`，也是 `fixed`），否则会误判；
 且要先确认按钮 `getBoundingClientRect().top > 0`（滚出视口的负数坐标 hover 不到）。
 
+## 10. ⭐ 右侧栏面板「颜色像叠了两次」：`panel` 与 `panelBody` 是两层
+用户 2026-09-14 反馈「右侧面板的颜色像是叠加了两次」。实测：
+
+```
+P3OORG_panel       710x874  bg rgba(243,245,251,0.75)   ← 被 [class*="panel"] 命中
+  └ P3OORG_panelBody 709x874  bg rgba(243,245,251,0.75)  ← 也被命中（嵌套！）
+```
+`[class*="panel"]` 是**子串**匹配，外层 `panel` 与内层 `panelBody` 尺寸几乎重合，
+各上一层 0.75 → 等效 `1-(0.25)² = **0.94**`，比 token 原值实得多。
+官方 CSS 只给外层上色，多出来那层是我们加的。
+
+**修法：只作用于「最外层命中元素」** —— 用 `:not()` 里放一个后代选择器排除被嵌套的：
+```css
+[class*="rightbarCol"] [class*="panel"]:not([class*="panel"] [class*="panel"]) {
+  background: var(--dsw-alias-bg-layer-1);
+}
+```
+`:not(A A)` 的语义 = 「自身不是被另一个 A 包着的 A」→ 稳定只选最外层，**不依赖哈希名**，
+比 `:not([class*="panelBody"])` 这类点名排除更抗改名。
+
+**通用写法**：凡是给某个「可能嵌套同名元素」的类上底/上模糊，都先数一下
+`document.querySelectorAll(sel)` 的**可见命中数**与它们的**嵌套关系**；
+> 1 且相互嵌套时，用 `:not(sel sel)` 收敛到最外层。
+实测判据：改完可见命中里**只有最外层有底色**，等效 alpha 回到 token 原值。
+
+
 ## 通用教训
 
 给 `[class*="…"]` 加视觉属性前，先看这条选择器会不会同时命中**同一子树里的多层**；要「只留一层」就得连内层一起重置。跨构建哈希选择器优先加作用域或改用语义属性。
