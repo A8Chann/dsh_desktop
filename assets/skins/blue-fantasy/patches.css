@@ -846,3 +846,30 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] header {
    所以必须对最里层的 panel 上底（早先写在 `rightbarCol > *` 上 = 宿主元素，等于没写）。
    颜色/浓度已并入上方「顶部导航栏与右侧侧边栏」那条统一规则（rgba(242,245,250,.75)），
    这里不再重复声明，避免两处数值打架。 */
+
+
+/* ═══ hover 提示气泡（[role="tooltip"]，壳层的 `._bubble_1nw3t_1`）═══
+   壳层规则是 `background: var(--dsw-alias-tooltip-bg)`，而该 token 取值
+   **固定淡黄 `#ffffe1`、亮暗主题都不变** —— 与皮肤的冷色调不搭，暗色下更突兀
+   （整屏唯一的暖黄块）。这里换成皮肤的冷色基色并跟随主题。
+
+   浓度取**固定值、不跟「气泡不透明度」滑杆**：提示气泡属于界面外框
+   （与顶部导航栏、右侧栏同类），不是「文字背后的托底」——
+   滑杆拉到 0 时它不该跟着一起消失。
+   基色仍与左栏同源：亮 rgb(242 245 250)、暗 rgb(16 22 42)；
+   浓度取 .92，比导航栏的 .75 更实 —— 提示气泡直接压在内文上、只有一行字，需要更高对比。
+   文字色亮色用皮肤主文字色、暗色用浅色；并描一条发丝边，
+   避免浅底压在浅色插画上没边界。 */
+[role="tooltip"] {
+  background: rgba(242, 245, 250, 0.92);
+  color: #1d2539;
+  border: 0.5px solid rgba(28, 37, 70, 0.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.3);
+  backdrop-filter: blur(10px) saturate(1.3);
+}
+
+body[data-ds-dark-theme] [role="tooltip"] {
+  background: rgba(16, 22, 42, 0.92);
+  color: #dbe2f2;
+  border-color: rgba(160, 180, 230, 0.14);
+}

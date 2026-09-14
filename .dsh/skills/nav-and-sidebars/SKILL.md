@@ -25,6 +25,14 @@ description: >
 - 曾经写成 `rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1.5))`（默认 50% 时正好 .75），被用户否掉，已改回固定 `rgba(242,245,250,.75)`。
 - 验证方法：把 `--dsh-skin-bubble-alpha` 依次设成 `0.9 / 0.1 / 0`，导航栏与右侧栏应**始终** `.75`，而正文托底跟着变。
 
+### hover 提示气泡（`[role="tooltip"]`）同属「外框」，也固定浓度
+壳层规则：`._bubble_1nw3t_1 { background: var(--dsw-alias-tooltip-bg); color: var(--dsw-static-neutral-bluish-00) }`。
+- ⚠️ `--dsw-alias-tooltip-bg` = **`#ffffe1` 固定淡黄，亮暗主题都不变**（壳层不做主题区分）→ 暗色下整屏唯一的暖黄块，很突兀。
+- 皮肤基线区（L30 附近）只把文字色换成了 `--dsw-alias-tooltip-fg`；底色覆盖加在**本地追加区**，靠层叠顺序取胜（同特异性、后出现者赢）。
+- 2026-09-14 定稿：亮 `rgba(242,245,250,.92)` / 暗 `rgba(16,22,42,.92)`，文字 `#1d2539` / `#dbe2f2`，加 0.5px 发丝边 + `blur(10px)`。
+  浓度取 **.92 固定**、比导航栏 `.75` 更实（气泡只有一行字且直接压在内文上，需要更高对比），同样**不跟滑杆**。
+- 改底色时**不要**顺手给 `[role="tooltip"]` 的**祖先**加 `backdrop-filter` —— 见 `hash-selector-pitfalls` 第 9 条（会劫持 fixed tooltip 的定位）。加在 tooltip 自身是安全的（它是叶子节点）。
+
 ## 导航栏内部各项：**不加任何背景**
 
 （会话名 / 模式选择 / 对话 / 轨迹 / 上下文）—— 最终定稿为「不加任何背景」。
