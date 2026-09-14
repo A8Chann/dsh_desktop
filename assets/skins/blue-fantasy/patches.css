@@ -627,6 +627,30 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="LVzXQa_strip"]
 }
 
 
+/* ═══ 选择回复的卡片（答题卡 / 计划复核卡）：与「输入卡模糊」联动 ═══
+   官方 `@deepseek-ai/dsh-client-ui-user-questions` 渲染两张卡，结构都是
+   `div.frame[data-*-key] > section.card`：
+     - 答题卡     `[data-question-key] > section`
+     - 计划复核卡 `[data-plan-review-key] > section`
+   它们的 CSS 只写了 `background: var(--dsw-specific-input-major)`，**没有 backdrop-filter** ——
+   于是同一屏里输入卡是毛玻璃、这两张卡是死平面（用户 2026-09-14 反馈「选择回复的卡片没有背景模糊」）。
+
+   底色本身是半透明的（亮 `rgba(255,255,255,.8)` / 暗 `rgba(26,34,56,.825)`），
+   所以补上模糊就见效；模糊值直接读「输入卡模糊」那同一个变量
+   `--dsh-input-card-blur`（皮肤中心写它，并把同一个值给 `[data-composer-card]`），
+   拖动那个滑杆时两张卡与输入卡一起变。
+
+   ⚠️ 加 backdrop-filter 前已核对：该插件里 `Tooltip` 出现 **0 次**、无 `position: fixed`，
+   所以不会像操作行那样劫持浮层定位（见 hash-selector-pitfalls 第 9 条）。
+   用语义属性 `data-question-key` / `data-plan-review-key` 定位，不用哈希类名。
+   不加 `[data-slot="main.conversation"]` 作用域 —— 这两张卡在输入区附近，未必在该 slot 内。 */
+[data-question-key] > section,
+[data-plan-review-key] > section {
+  -webkit-backdrop-filter: blur(var(--dsh-input-card-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-input-card-blur, 10px)) saturate(1.3);
+}
+
+
 /* ═══ 回合过程行「N 次工具调用 · M 条消息」（2026-09-10 用户反馈「两层背景」）═══
    根因：原先这条挂在 `[class*="l_V-RG_"]` 上，而 `l_V-RG_` 前缀在本模块里**同时命中三层**：
 

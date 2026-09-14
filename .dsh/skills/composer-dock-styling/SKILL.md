@@ -47,6 +47,30 @@ dock 比 panel **两边各宽 8px** → 外壳那层就两侧各突出来 8px。
 > `<div data-queue-dock class="_7yHdaG_dock"><div class="_7yHdaG_panel">…</div></div>`，
 > 官方 CSS 是按类名/属性匹配的，合成元素一样吃得到，量 `dock` 与 `panel` 的 `background` 与左右边界差即可。
 
+## 选择回复的卡片（答题卡 / 计划复核卡）：消费 `--dsh-input-card-blur`
+官方 `@deepseek-ai/dsh-client-ui-user-questions` 渲染两张卡，结构都是
+`div.frame[data-*-key] > section.card`：
+- 答题卡 `[data-question-key] > section`
+- 计划复核卡 `[data-plan-review-key] > section`
+
+两者 CSS 只有 `background: var(--dsw-specific-input-major)`、**没有 backdrop-filter**，
+于是同一屏里输入卡是毛玻璃、这两张卡是死平面（用户 2026-09-14 反馈）。
+
+```css
+[data-question-key] > section,
+[data-plan-review-key] > section {
+  -webkit-backdrop-filter: blur(var(--dsh-input-card-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-input-card-blur, 10px)) saturate(1.3);
+}
+```
+- 底色 token 本身半透明（亮 `rgba(255,255,255,.8)` / 暗 `rgba(26,34,56,.825)`），**补模糊就见效**，不用改底色。
+- 模糊值直接读 `--dsh-input-card-blur`（皮肤中心的「输入卡模糊」就是写这个变量，
+  外壳渲染层把同一个值给 `[data-composer-card]`）→ 拖滑杆时三处一起变。
+- 用**语义属性**定位，不用哈希类名；**不加** `[data-slot="main.conversation"]` 作用域
+  —— 这两张卡在输入区附近，未必在该 slot 内。
+- ⚠️ 加 `backdrop-filter` 前已核对：该插件 `Tooltip` 出现 **0 次**、无 `position: fixed`
+  → 不存在操作行那种「劫持 fixed 浮层定位」的风险。**任何要加 bf 的元素都先做这一步核对。**
+
 ## 「Go 5h」(cm-qstrip) —— 清掉外壳那层底
 - 查证 cost-meter 自己的 CSS 里 `.cm-qstrip` **只有布局、没有任何 background**（`display:flex;flex-wrap:wrap;justify-content:center;width:100%;max-width:var(--dsh-chat-content-width,720px);padding:0 calc(var(--dsh-composer-side-clearance,0px) + 16px)`）。
 - **里面每个 `cm-qchip` 小胶囊才各自有底**（`var(--dsw-alias-bg-layer-2)`）。用户说的「本来就有背景」指的就是这些小胶囊。
