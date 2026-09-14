@@ -68,7 +68,7 @@
 
 构建/门禁（只需该包依赖时）：`corepack pnpm install --filter "@linxin666/dsh-client-ui-skin-center..."`（2m33s，且 `prepare` 会跑 `tsdown` 顺带验证编译），然后 `typecheck` 与 `test`（本次 **35 files / 618 tests passed**）。
 
-## 六、提交状态（2026-09-13）
+## 六、提交状态（2026-09-14）
 
 | 条目 | 状态 |
 |---|---|
@@ -76,9 +76,13 @@
 | [PR #1468](https://github.com/zhu1090093659/dsh-web/pull/1468) blue-fantasy 文字可读性层 | **已合并**（merge commit `bf1e40e`） |
 | [PR #1476](https://github.com/zhu1090093659/dsh-web/pull/1476) 后续：联动滑杆 / 代码块毛玻璃 / 表格托底收窄 / 过程行去双层 / 窗口外框底色 | **已合并** |
 | [PR #1516](https://github.com/zhu1090093659/dsh-web/pull/1516) 气泡模糊程度滑杆（`bubbleBlur`） | **已合并**（merge `ffedeae`，维护者先 APPROVED 再合并）；随 **0.3.22** 发布 |
+| [PR #1562](https://github.com/zhu1090093659/dsh-web/pull/1562) 修 blue-fantasy 操作行的 hover 气泡跑飞（`backdrop-filter` 劫持 fixed 定位） | **open**，7 文件 +73 −19；首轮全绿（含 `Validate PR contribution evidence`） |
+| [PR #1563](https://github.com/zhu1090093659/dsh-web/pull/1563) 浮层配色与面板层次（气泡 / hover 卡 / 队列 dock / 答题卡 / 右栏与底部面板） | **open**，6 文件 +337 −7 |
+| [PR #1564](https://github.com/zhu1090093659/dsh-web/pull/1564) 输入区配件与顶栏改读正确变量（输入卡模糊 / 背景遮挡） | **open**，6 文件 +313 −7 |
 
 > ⚠️ **#1466 是被机器人关掉的废稿**（第一次用最小 payload 试通道，未按模板填写）。教训见第七节。
 > ⚠️ **#1516 首轮被 `Validate PR contribution evidence` 驳回** —— 原因与修法见第八节。
+> 💡 **#1562 首轮就过**，因为正文按第八节第 1 条把「结果摘要：」后面的括号去掉了。
 
 ## 六之二、上线收尾（2026-09-14 完成）
 
