@@ -32,6 +32,39 @@ const profile = pi >= 0 ? argv[pi + 1] : 'web';
 const home = process.env.DSH_HOME || join(homedir(), '.dsh');
 const nm = join(home, 'profiles', profile, 'node_modules');
 
+/** 「气泡模糊程度」随哪个上游版本正式发布（见 dsh-web PR #1516，merge ffedeae）。 */
+const UPSTREAM_VERSION = [0, 3, 22];
+
+/**
+ * 上游是否已经自带这个功能。≥ 0.3.22 就必须**停止打补丁** ——
+ * 否则等于把同一功能实现两遍，且下面的 --check 会误报。
+ */
+function upstreamHasFeature() {
+  const pkg = join(nm, '@linxin666', 'dsh-client-ui-skin-center', 'package.json');
+  if (!existsSync(pkg)) return false;
+  try {
+    const v = JSON.parse(readFileSync(pkg, 'utf8')).version;
+    const cur = String(v).split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      const a = cur[i] ?? 0;
+      const b = UPSTREAM_VERSION[i];
+      if (a !== b) return a > b;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+if (upstreamHasFeature()) {
+  console.log(`皮肤中心「气泡模糊」补丁 —— **已废弃，无需再打**。`);
+  console.log(`  已安装的 @linxin666/dsh-client-ui-skin-center 版本 ≥ ${UPSTREAM_VERSION.join('.')}，`);
+  console.log(`  该功能已随上游正式发布（dsh-web PR #1516，merge ffedeae），原版即带「气泡模糊程度」滑杆。`);
+  console.log(`  本地产物热修已撤回；继续打补丁会把同一功能实现两遍。`);
+  console.log(`  如需在旧版本上临时启用，请先降级到 < ${UPSTREAM_VERSION.join('.')} 再运行本脚本。`);
+  process.exit(0);
+}
+
 const CLIENT_FILES = [
   join(nm, '@linxin666', 'dsh-web-all', 'lib', 'client.js'),              // 实际下发的（聚合包内联副本）
   join(nm, '@linxin666', 'dsh-client-ui-skin-center', 'lib', 'client.js') // 独立安装时用的那份
@@ -135,7 +168,13 @@ const HOST_PATCHES = [
   }
 ];
 
-const MARK = 'BUBBLE_BLUR_VAR';
+/**
+ * 「是否已打」的判据。
+ *
+ * ⚠️ 不能再用 `BUBBLE_BLUR_VAR`：上游 0.3.22 起自己就带这个标识符（原版 bundle 里
+ * 有 4 处），拿它判断会**永远显示「已打」**。改用本脚本独有的中文注释标记。
+ */
+const MARK = '本地补丁（skin-center-bubble-blur.mjs）';
 
 function run(file, patches, label) {
   if (!existsSync(file)) { console.log(`  [跳过] 不存在: ${file}`); return; }

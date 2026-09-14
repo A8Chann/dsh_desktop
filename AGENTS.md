@@ -70,8 +70,9 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 
 - `assets/skins/blue-fantasy/` —— 皮肤成品 + 上游基准 + provenance 快照。
 - `assets/upstream-pr/` —— 待提交给皮肤中心上游的 PR 材料。
-- `scripts/` —— 补丁与验证工具：`cost-meter-plan-box.mjs`、`skin-center-bubble-blur.mjs`、
-  `skin-patches.ps1`、`session-log.mjs`（多帧 zstd 会话日志：`frames`/`dump`/`raw`/`scan`）、
+- `scripts/` —— 补丁与验证工具：`cost-meter-plan-box.mjs`、`skin-center-bubble-blur.mjs`
+  （**已废弃**，功能随上游 0.3.22 发布，脚本自带版本闸门）、`skin-patches.ps1`、
+  `session-log.mjs`（多帧 zstd 会话日志：`frames`/`dump`/`raw`/`scan`）、
   `verify-toolimg-patch.mjs`、`cdp/`（无头验证三件套）。
 - 这些用 `AGENTS.md.bak-*` 之类**不要**再堆在根目录。
 

@@ -75,10 +75,30 @@
 | [issue #1469](https://github.com/zhu1090093659/dsh-web/issues/1469) 气泡模糊滑杆提案 | **已关闭（completed）**，维护者 @Aa728848 明确邀请提 PR，指定基线 `dev`、按模板填、无 Emoji |
 | [PR #1468](https://github.com/zhu1090093659/dsh-web/pull/1468) blue-fantasy 文字可读性层 | **已合并**（merge commit `bf1e40e`） |
 | [PR #1476](https://github.com/zhu1090093659/dsh-web/pull/1476) 后续：联动滑杆 / 代码块毛玻璃 / 表格托底收窄 / 过程行去双层 / 窗口外框底色 | **已合并** |
-| [PR #1516](https://github.com/zhu1090093659/dsh-web/pull/1516) 气泡模糊程度滑杆（`bubbleBlur`） | **open**，19 文件 +261 −16，基于 `dev` 尖端；**9 项检查全绿**（含 `CI checks` / `libs:check`） |
+| [PR #1516](https://github.com/zhu1090093659/dsh-web/pull/1516) 气泡模糊程度滑杆（`bubbleBlur`） | **已合并**（merge `ffedeae`，维护者先 APPROVED 再合并）；随 **0.3.22** 发布 |
 
 > ⚠️ **#1466 是被机器人关掉的废稿**（第一次用最小 payload 试通道，未按模板填写）。教训见第七节。
 > ⚠️ **#1516 首轮被 `Validate PR contribution evidence` 驳回** —— 原因与修法见第八节。
+
+## 六之二、上线收尾（2026-09-14 完成）
+
+**#1516 的合并 → 发布 → 本地升级 → 撤补丁，这条链已经走完：**
+
+| 步骤 | 结果 |
+| --- | --- |
+| 合并 | `ffedeae`，2026-09-13T07:38Z |
+| 发布 | `@linxin666/dsh-client-ui-skin-center` / `dsh-web-all` **0.3.22**（同日 14:24–14:28Z） |
+| 本地升级 | 20 个 `@linxin666/*` 包全部 → 0.3.22；`profile/package.json` 依赖 → `^0.3.22` |
+| 撤补丁 | 升级前先 `--revert`，升级后 **5 个文件与官方 tarball 逐字节一致**（零残留） |
+| 实测 | 设置 → 皮肤 → 背景卡出现第 6 个旋钮「气泡模糊程度」（0–20 / 默认 10），拖动 → `--dsh-skin-bubble-blur` 跟着变 |
+
+**踩到的两个小坑（都已处理）：**
+
+1. **pnpm 24h 冷静期**：0.3.22 发布仅 13 小时后升级，必须先在该 profile 的
+   `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 里放行 —— 聚合包**加上它依赖的 19 个子包**共 20 条。
+2. **热修脚本的「已打」判据失效**：`skin-center-bubble-blur.mjs` 原本用 `BUBBLE_BLUR_VAR` 判断，
+   而上游 0.3.22 原版 bundle 里**自己就带这个标识符（4 处）** → 永远误报「已打」。
+   已改用脚本独有的中文注释标记，并加**版本闸门**（≥ 0.3.22 直接提示废弃并退出）。
 
 ## 七、本目录内容
 
@@ -91,7 +111,8 @@
 | `blue-fantasy-readability/PR-BODY.md` | 首版 PR 正文（= [#1468]，正文已更新为后续说明） |
 | `blue-fantasy-readability/PR2-BODY.md` | 后续 PR 正文（= [#1476]） |
 
-遗留：**#1516 合入并发布后**，记得撤掉本地那份**产物级**热修 —— `node scripts\skin-center-bubble-blur.mjs --revert`，避免同一功能两处实现。
+~~遗留：**#1516 合入并发布后**，记得撤掉本地那份**产物级**热修。~~
+**✅ 已于 2026-09-14 完成** —— 见上面「六之二、上线收尾」。热修脚本现已带版本闸门，检测到 ≥ 0.3.22 会直接提示废弃。
 
 ## 八、PR 被自动检查驳回的两个坑（2026-09-13 实测）
 
