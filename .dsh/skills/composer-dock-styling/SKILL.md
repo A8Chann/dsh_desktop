@@ -15,20 +15,37 @@ whenToUse: >
 | 维度 | 配件区（本节这几个） | 正文托底（可读性层） |
 | --- | --- | --- |
 | 模糊 | `--dsh-input-card-blur`（**输入卡模糊**） | `--dsh-skin-bubble-blur`（气泡模糊程度） |
-| 底色 | **`var(--dsw-specific-input-major)`**（与输入卡同一份） | `--dsh-skin-bubble-alpha`（气泡不透明度） |
+| 底色 | **皮肤基色 + 借 `--dsw-specific-input-major` 的 alpha** | `--dsh-skin-bubble-alpha`（气泡不透明度） |
 
-### 🔑 `--dsw-specific-input-major` 的 alpha **本身就是「背景遮挡」算出来的**
-```
-亮  --dsw-specific-input-major: rgba(255, 255, 255, calc(1 - <背景遮挡> * .4))
-暗  --dsw-specific-input-major: rgba(26,  34,  56,  calc(1 - <背景遮挡> * .35))
-```
-所以**「这类配件联动背景遮挡」= 直接写 `background: var(--dsw-specific-input-major)`**，
-不需要自己乘系数 —— 2026-09-14 我先写成 `color-mix(… calc(var(--dsw-skin-scrim) * 200%) …)`，
-被用户纠正：那等于把遮挡算了两遍（默认值碰巧一样，一拖动就分叉）。
+### 🔑 底色写法：只借 token 的 **alpha**，颜色仍用皮肤基色
+用户 2026-09-14 明确：「**我不是说颜色要与 `--dsw-specific-input-major` 一样，我只是说 alpha 值一样**」。
 
-实测（改 `--dsw-skin-scrim`）：三行与输入卡的 computed 底色**逐值一致** ——
-`0.5 → rgba(255,255,255,.8)`、`0.2 → .92`、`1 → .6`、暗色 `0.5 → rgba(26,34,56,.824)`。
-**深色主题因此不需要单独的 background 覆盖**（token 自己会切），相关 body 变体已删除。
+```css
+[class*="cm-root"], [class*="-NDN2W_root"], [class*="cm-qchip"], /* + dock 内两条 */ {
+  background: rgb(from var(--dsw-specific-input-major) 242 245 250 / alpha);
+}
+body[data-ds-dark-theme] /* 同上选择器 */ {
+  background: rgb(from var(--dsw-specific-input-major) 16 22 42 / alpha);
+}
+```
+- **相对颜色语法** `rgb(from C <r> <g> <b> / alpha)`：字面通道给皮肤基色，
+  `alpha` 关键字取源色的 alpha。**WebView2 上已实测可用**（computed 正常解析）。
+- 换颜色只需改那三个数字；**改 alpha 逻辑不用动本皮肤** —— 源 token 一改就自动跟随。
+
+### 🔑 `--dsw-specific-input-major` 的 alpha 由「背景遮挡」驱动
+```
+亮  rgba(255, 255, 255, calc(1 - <背景遮挡> * .4))
+暗  rgba(26,  34,  56,  calc(1 - <背景遮挡> * .35))
+```
+所以「配件联动背景遮挡」= **借它的 alpha 即可**，不必自己乘系数或抄公式。
+⚠️ 2026-09-14 两次踩坑记录：
+1. 先写成 `color-mix(… calc(var(--dsw-skin-scrim) * 200%) …)` → 等于把遮挡算了两遍
+   （默认值碰巧一致，一拖动就分叉：scrim=0.2 时我给 .368、输入卡是 .92）；
+2. 再写成 `background: var(--dsw-specific-input-major)` → 那连**颜色**也变成输入卡的白了，
+   而用户只要 alpha。
+
+实测（改 `--dsw-skin-scrim`）：三行 = `rgb(242,245,250)` 固定 + alpha `0.8 / 0.9216 / 0.6` 跟随；
+暗色 = `rgb(16,22,42)` + alpha `0.8235`。深色变体必须保留（颜色是我们自己的，不会自动切）。
 
 ⚠️ 别再顺手把这些行改回气泡变量，也别给它们自己写 scrim 的 calc。
 
