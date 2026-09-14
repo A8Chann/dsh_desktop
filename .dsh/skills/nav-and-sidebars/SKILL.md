@@ -39,6 +39,32 @@ description: >
 - 删规则后务必扫一遍 `^\s*,\s*$` 与 `^\}\s*,\s*$`；
 - 更稳的是**验证关键声明是否真的生效**（读 computed），别只看语法。
 
+## 右侧侧边栏面板（`P3OORG_panel`）—— 与顶部导航栏**分开处理**
+2026-09-14 用户澄清：顶部导航栏与右侧栏**不是一回事**。
+
+- **底色不要覆盖**：官方 `.P3OORG_panel` 本来就是 `background: var(--dsw-alias-bg-base)`。
+  我们曾顺手把它和顶部导航栏写进同一条规则、盖成了 sidebar-fill，被要求改回。
+  → 现在只对 `<header>` 上色，右侧栏交给官方。
+- **分割线与左栏对齐**：官方给的是 `border-left: .5px solid var(--dsw-alias-border-l4)`，
+  而左侧栏是 `border-right: .5px solid var(--dsw-alias-border-l3)` —— **l4 比 l3 深一档**
+  （实测 α 0.42 vs 0.32），两侧看着不一致。改成 `border-left-color: var(--dsw-alias-border-l3)`。
+- 右侧栏真面板是 `.panel`，两层 slot 宿主（`rightbar` / `rightbar.session`）都是 `display:contents`，
+  写它们等于没写。
+
+## 底部面板展开时右侧竖线「断层」—— 对称补一条右边框
+**现象**：底部面板（终端等）展开后，右侧那根竖分割线在 y = 底部面板顶 以下消失了。
+**根因**（实测）：底部面板范围为 `x 280..867`，而右侧栏面板左边框在 `x 866` ——
+右边缘比它**多 1px**，正好把那 1px 竖线盖住。左侧栏没这问题，因为底部面板从它右边（280）开始。
+**修法**（对齐左栏做法，不碰任何宽度）：
+```css
+[class*="bottomPanel"] {
+  box-sizing: border-box;                                 /* 边框画进既有宽度内，零位移 */
+  border-right: 1px solid var(--dsw-alias-border-l3);     /* 与左栏/右栏同色 */
+}
+```
+⚠️ 关闭右侧栏时底部面板会延伸到窗口右缘，这条边框就落在窗口边缘（几乎不可见，可接受）。
+不要为此去改底部面板的宽度 —— 那会像 2026-09-14 那次一样把行宽也改了。
+
 ### hover 提示气泡（`[role="tooltip"]`）同属「外框」，也固定浓度
 壳层规则：`._bubble_1nw3t_1 { background: var(--dsw-alias-tooltip-bg); color: var(--dsw-static-neutral-bluish-00) }`。
 - ⚠️ `--dsw-alias-tooltip-bg` = **`#ffffe1` 固定淡黄，亮暗主题都不变**（壳层不做主题区分）→ 暗色下整屏唯一的暖黄块，很突兀。

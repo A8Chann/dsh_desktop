@@ -863,19 +863,36 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="producedRow"] 
 }
 
 
-/* ═══ 顶部导航栏（会话头部）与右侧侧边栏 ═══
+/* ═══ 顶部导航栏（会话头部）═══
    颜色：取 `--dsw-specific-sidebar-fill` —— 左侧导航栏用的那个 token，
-   亮 rgb(242,245,250) / 暗 rgb(29,37,57)，**自带主题切换**，所以深浅色共用一条规则
-   （2026-09-14 用户要求「改成同 sidebar-fill 的 29 37 57」）。
+   亮 rgb(242,245,250) / 暗 rgb(29,37,57)，**自带主题切换**，深浅色共用一条规则。
    alpha：联动「背景遮挡」`--dsw-skin-scrim`，线性映射 **0.95 → 0.45**
    （遮挡 0 → 0.95，遮挡 1 → 0.45），取代原先写死的 0.75。
-   仍**不跟**「气泡不透明度」滑杆 —— 外框是框架不是气泡（用户 2026-09-11 明确）。
-   定位：顶部导航栏用 `<header>` 元素名 + `[data-slot="main.conversation"]`；
-   右侧栏见下方注释（真面板是 `.panel`，两层 slot 宿主都是 display:contents）。 */
-[data-slot="main.conversation"] header,
-[data-slot="rightbar.session"] > *,
-[class*="rightbarCol"] [class*="panel"] {
+   仍**不跟**「气泡不透明度」滑杆 —— 外框是框架不是气泡（用户 2026-09-11 明确）。 */
+[data-slot="main.conversation"] header {
   background: rgb(from var(--dsw-specific-sidebar-fill) r g b / calc(0.95 - var(--dsw-skin-scrim, .5) * 0.5));
+}
+
+/* ═══ 右侧侧边栏面板 ═══
+   底色**不覆盖**：官方 `.P3OORG_panel` 本来就是 `background: var(--dsw-alias-bg-base)`，
+   我们之前把它盖成了 sidebar-fill；2026-09-14 用户要求「应该是 --dsw-alias-bg-base」，
+   故这里只留边框覆盖，让官方底色生效。
+   分割线：官方给的是 `border-left: .5px solid var(--dsw-alias-border-l4)`，
+   而左侧栏是 `border-right: .5px solid var(--dsw-alias-border-l3)` —— l4 比 l3 深一档
+   （实测 0.42 vs 0.32），两侧不一致；这里改成与左栏同色。 */
+[class*="rightbarCol"] [class*="panel"] {
+  border-left-color: var(--dsw-alias-border-l3);
+}
+
+/* ═══ 底部面板：右侧补一条竖线，避免交界处断层 ═══
+   实测：底部面板展开时范围为 x 280..867，而右侧栏面板左边框在 x 866 ——
+   右边缘比它多 1px，**正好把那根竖线盖住**，于是 y∈[底部面板顶, 底] 段的分割线消失
+   （用户反馈「与底部面板的交界处断层了」）。左侧栏没这问题，因为底部面板从它右边开始。
+   对称地给底部面板补一条同色右边框（并 box-sizing: border-box，
+   让边框画在既有 587px 宽度内、不改变任何尺寸），竖线即与左栏一样拉通。 */
+[class*="bottomPanel"] {
+  box-sizing: border-box;
+  border-right: 1px solid var(--dsw-alias-border-l3);
 }
 
 [data-slot="main.conversation"] header {
