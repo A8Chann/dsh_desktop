@@ -507,6 +507,29 @@ body[data-ds-dark-theme] [data-chat-flow-kind="steering"] [class*="actions"]::be
   box-shadow: none !important;
 }
 
+/* ═══ 对话队列（排队消息）dock：清掉外壳 accessory 底，只留官方 panel 一层 ═══
+   皮肤「外壳渲染层」的 accessory 规则会给
+     html[data-dsh-skin] [data-phase="active"] [data-slot="conversation.input.dock"] > *
+   的**每个直接子元素**刷不透明底 + blur + 圆角 + 阴影（带 !important），
+   队列 dock（`_7yHdaG_dock`，带 `data-queue-dock`）正是它的直接子级 →
+   「外壳一层 + 官方 `_7yHdaG_panel` 一层」= 两层底。
+
+   而且 dock 自带 `padding: 0 var(--dsh-composer-dock-inset)`（8px）、panel 在它内侧，
+   所以外壳那层比 panel **两边各宽 8px**（实测 左 −8px / 右 +8px）——
+   2026-09-14 用户截图反馈的「两侧明显有一点超出的元素」。
+
+   照壳层自己的先例（`[data-goal-bar="true"]` 重复三次提特异性 + 清底）处理：
+   只清视觉属性，**不动 padding / width / margin**，交还官方 panel
+   （`background: var(--dsw-specific-tip)` + `border-radius: 12px 12px 0 0` + 0.5px 描边）。 */
+[data-phase="active"] [data-slot="conversation.input.dock"] > [data-queue-dock],
+[data-phase="active"] [data-slot="conversation.composer.dock"] > [data-queue-dock] {
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
 /* ═══ dsh-cost-meter / 统计类（第一版方案，2026-09-10 收敛） ═══
    `cm-qstrip` 见上方规则（清掉外壳底、交还原生布局）。
    `cm-root`（「本会话 ¥…」）保留这里的宽度/内边距/圆角，底色由下方毛玻璃规则接管。

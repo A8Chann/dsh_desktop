@@ -15,6 +15,38 @@ whenToUse: >
 ```
 实测解析成 **不透明的 `rgb(243,245,251)` + `blur(10px)`**（补丁自己写的那份 `.5` 白底早被这条 `!important` 压掉了，改它是没用的）。
 
+## 对话队列（排队消息）dock —— 同样要清掉外壳那层底（2026-09-14 新增）
+用户反馈「对话队列的样式背景似乎有两层，两侧明显有一点超出的元素」。
+
+队列组件在官方 `@deepseek-ai/dsh-client-ui-conversation`：`QueueDock`，类名 `_7yHdaG_*`，
+根节点带 **`data-queue-dock`**，内部是 `._7yHdaG_panel`（自带 `background: var(--dsw-specific-tip)`、
+`border-radius:12px 12px 0 0`、`padding:2px 0`、`::after` 0.5px 描边）。
+根 `._7yHdaG_dock` 自带 `padding: 0 var(--dsh-composer-dock-inset)`（=8px），**panel 在它内侧**。
+
+**两层 + 两侧超出的成因**：上面那条 `… > *` 的 accessory 规则把队列 dock 也当成 accessory 行刷了底，
+于是「外壳一层（画在 dock 上，含 8px padding）+ 官方 panel 一层」；
+dock 比 panel **两边各宽 8px** → 外壳那层就两侧各突出来 8px。
+
+**做法**（照壳层自己的先例 —— 它已经用 `[data-goal-bar="true"]` 重复三遍提特异性来豁免同类元素）：
+```css
+[data-phase="active"] [data-slot="conversation.input.dock"] > [data-queue-dock],
+[data-phase="active"] [data-slot="conversation.composer.dock"] > [data-queue-dock] {
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+```
+**只清视觉属性，不动 padding / width / margin** —— 那会像上一轮那样把行宽也改了。
+实测：dock `bg=transparent / bf=none / radius=0 / shadow=none`，panel 保留官方底
+（亮 `rgb(243,245,251)`、暗 `rgb(26,34,56)`），可见层数 2 → 1。
+
+> 验证技巧：队列只在「会话忙时发消息」才出现，无头页复现不了 → **手工合成同构 DOM** 即可验证层叠：
+> 往 `[data-slot="conversation.input.dock"]` 插一个
+> `<div data-queue-dock class="_7yHdaG_dock"><div class="_7yHdaG_panel">…</div></div>`，
+> 官方 CSS 是按类名/属性匹配的，合成元素一样吃得到，量 `dock` 与 `panel` 的 `background` 与左右边界差即可。
+
 ## 「Go 5h」(cm-qstrip) —— 清掉外壳那层底
 - 查证 cost-meter 自己的 CSS 里 `.cm-qstrip` **只有布局、没有任何 background**（`display:flex;flex-wrap:wrap;justify-content:center;width:100%;max-width:var(--dsh-chat-content-width,720px);padding:0 calc(var(--dsh-composer-side-clearance,0px) + 16px)`）。
 - **里面每个 `cm-qchip` 小胶囊才各自有底**（`var(--dsw-alias-bg-layer-2)`）。用户说的「本来就有背景」指的就是这些小胶囊。
