@@ -76,9 +76,12 @@
 | [PR #1468](https://github.com/zhu1090093659/dsh-web/pull/1468) blue-fantasy 文字可读性层 | **已合并**（merge commit `bf1e40e`） |
 | [PR #1476](https://github.com/zhu1090093659/dsh-web/pull/1476) 后续：联动滑杆 / 代码块毛玻璃 / 表格托底收窄 / 过程行去双层 / 窗口外框底色 | **已合并** |
 | [PR #1516](https://github.com/zhu1090093659/dsh-web/pull/1516) 气泡模糊程度滑杆（`bubbleBlur`） | **已合并**（merge `ffedeae`，维护者先 APPROVED 再合并）；随 **0.3.22** 发布 |
-| [PR #1562](https://github.com/zhu1090093659/dsh-web/pull/1562) 修 blue-fantasy 操作行的 hover 气泡跑飞（`backdrop-filter` 劫持 fixed 定位） | **open**，7 文件 +73 −19；首轮全绿（含 `Validate PR contribution evidence`） |
-| [PR #1563](https://github.com/zhu1090093659/dsh-web/pull/1563) 浮层配色与面板层次（气泡 / hover 卡 / 队列 dock / 答题卡 / 右栏与底部面板） | **open**，6 文件 +337 −7 |
-| [PR #1564](https://github.com/zhu1090093659/dsh-web/pull/1564) 输入区配件与顶栏改读正确变量（输入卡模糊 / 背景遮挡） | **open**，6 文件 +313 −7 |
+| [PR #1562](https://github.com/zhu1090093659/dsh-web/pull/1562) 修 blue-fantasy 操作行的 hover 气泡跑飞（`backdrop-filter` 劫持 fixed 定位） | **open**，7 文件 +73 −19；CI 全绿 |
+| [PR #1563](https://github.com/zhu1090093659/dsh-web/pull/1563) 浮层配色与面板层次（气泡 / hover 卡 / 队列 dock / 答题卡 / 右栏与底部面板） | **open**，6 文件 +337 −7；CI 全绿 |
+| [PR #1564](https://github.com/zhu1090093659/dsh-web/pull/1564) 输入区配件与顶栏改读正确变量（输入卡模糊 / 背景遮挡） | **open**，6 文件 +313 −7；CI 全绿（首轮 `CI checks` 撞上 `dsh-remote-web-ui` 的 `loopback-proxy` 偶发失败，空提交重跑即过） |
+
+> 三个 PR 互不重叠：#1562 只动操作行托底的绘制方式；#1563 动浮层与面板；#1564 动配件与顶栏的变量归属。
+> 合并顺序任意，但同一个文件 `patches.css`，第二个合入的需要 rebase —— **用户偏好拆开提**（2026-09-14 确认）。
 
 > ⚠️ **#1466 是被机器人关掉的废稿**（第一次用最小 payload 试通道，未按模板填写）。教训见第七节。
 > ⚠️ **#1516 首轮被 `Validate PR contribution evidence` 驳回** —— 原因与修法见第八节。
