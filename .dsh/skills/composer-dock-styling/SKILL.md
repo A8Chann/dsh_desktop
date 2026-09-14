@@ -10,17 +10,27 @@ whenToUse: >
 
 ## ⭐ 变量归属：输入区配件 ≠ 气泡（2026-09-14 用户明确）
 **这一片（`bOPqQW_root` / `[data-composer-stats]`、`cm-root`、`cm-qchip`）是「输入区配件」，
-不是「气泡」**，所以它读的是另外两根变量：
+不是「气泡」**，所以它读的是另外一套：
 
 | 维度 | 配件区（本节这几个） | 正文托底（可读性层） |
 | --- | --- | --- |
 | 模糊 | `--dsh-input-card-blur`（**输入卡模糊**） | `--dsh-skin-bubble-blur`（气泡模糊程度） |
-| 底色透明度 | `--dsw-skin-scrim`（**背景遮挡**） | `--dsh-skin-bubble-alpha`（气泡不透明度） |
+| 底色 | **`var(--dsw-specific-input-major)`**（与输入卡同一份） | `--dsh-skin-bubble-alpha`（气泡不透明度） |
 
-- 系数**原样保留**（`×1` / `×1.1` / `×.8`），默认 50% 遮挡 + 10px 下观感与改前逐像素一致。
-- `--dsw-skin-scrim` 是**数字**（body 行内 `0.5`，= 百分比/100），可直接写进 `calc()`。
-- 实测解耦（只动一根变量）：改输入卡模糊 → 三行变、正文不变；改气泡模糊程度 → 正文变、三行不变。
-- ⚠️ 别再顺手把这些行改回气泡变量 —— 用户明确要求它们与「输入卡模糊 / 背景遮挡」联动。
+### 🔑 `--dsw-specific-input-major` 的 alpha **本身就是「背景遮挡」算出来的**
+```
+亮  --dsw-specific-input-major: rgba(255, 255, 255, calc(1 - <背景遮挡> * .4))
+暗  --dsw-specific-input-major: rgba(26,  34,  56,  calc(1 - <背景遮挡> * .35))
+```
+所以**「这类配件联动背景遮挡」= 直接写 `background: var(--dsw-specific-input-major)`**，
+不需要自己乘系数 —— 2026-09-14 我先写成 `color-mix(… calc(var(--dsw-skin-scrim) * 200%) …)`，
+被用户纠正：那等于把遮挡算了两遍（默认值碰巧一样，一拖动就分叉）。
+
+实测（改 `--dsw-skin-scrim`）：三行与输入卡的 computed 底色**逐值一致** ——
+`0.5 → rgba(255,255,255,.8)`、`0.2 → .92`、`1 → .6`、暗色 `0.5 → rgba(26,34,56,.824)`。
+**深色主题因此不需要单独的 background 覆盖**（token 自己会切），相关 body 变体已删除。
+
+⚠️ 别再顺手把这些行改回气泡变量，也别给它们自己写 scrim 的 calc。
 
 ## 底的全部来源
 `Go 5h`(cm-qstrip) / 统计行(`[data-composer-stats]`) / 本会话(`cm-root`) 的底**全部来自皮肤「外壳渲染层」的 accessory 规则**：
