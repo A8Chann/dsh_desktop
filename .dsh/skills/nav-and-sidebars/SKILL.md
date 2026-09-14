@@ -33,6 +33,21 @@ description: >
   浓度取 **.92 固定**、比导航栏 `.75` 更实（气泡只有一行字且直接压在内文上，需要更高对比），同样**不跟滑杆**。
 - 改底色时**不要**顺手给 `[role="tooltip"]` 的**祖先**加 `backdrop-filter` —— 见 `hash-selector-pitfalls` 第 9 条（会劫持 fixed tooltip 的定位）。加在 tooltip 自身是安全的（它是叶子节点）。
 
+### 侧边栏行的 hover 浮层（hovercard）是另一处「壳层写死深色」
+`[class*="sessionRow"]` / `projectRow` 悬停会弹一张 244×96 的浮卡，**它的 role 是 `button` 不是 `tooltip`**，
+所以 `[role="tooltip"]` 规则管不到它。壳层定义：`._card_1b2ny_13 { --dsw-hovercard-bg: #2C2C2E; background: var(--dsw-hovercard-bg); ... }`
+—— **token 直接写在元素自身上**，且是「始终深色」设计（内部配白字 `#fff` / 灰字 `#cfd3d6`、`#adb2b8`）。
+2026-09-14 用户反馈后改为冷色浮层：亮 `rgba(242,245,250,.96)` / 暗 `rgba(16,22,42,.96)`，
+标题 `#1d2539` / `#dbe2f2`，时间与状态 `#5a6a8c` / `#a8b6d4`。
+
+**要点**：
+- 只改底色会把白字变成「白字压浅底」→ **标题/时间/状态三行必须一起改**（用 `[class*="hoverTitle"]` 等）。
+- 这些类的样式**不在静态 CSS 里**，是插件运行时注入的 `<style>`；靠**特异性**取胜即可
+  （皮肤系统给每条规则自动加 `html[data-dsh-skin="blue-fantasy"]` 前缀，高于壳层的单类选择器），
+  不必关心注入顺序。
+- 同类「壳层写死深色」的还有 `--dsw-alias-tooltip-bg: #ffffe1`（淡黄，亮暗同值）。找这类问题的通用手法：
+  悬停后遍历 `document.styleSheets`，打印命中元素且带 `background` 的规则并标出来源。
+
 ## 导航栏内部各项：**不加任何背景**
 
 （会话名 / 模式选择 / 对话 / 轨迹 / 上下文）—— 最终定稿为「不加任何背景」。
