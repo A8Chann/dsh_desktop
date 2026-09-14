@@ -42,9 +42,12 @@ description: >
 ## 右侧侧边栏面板（`P3OORG_panel`）—— 与顶部导航栏**分开处理**
 2026-09-14 用户澄清：顶部导航栏与右侧栏**不是一回事**。
 
-- **底色不要覆盖**：官方 `.P3OORG_panel` 本来就是 `background: var(--dsw-alias-bg-base)`。
-  我们曾顺手把它和顶部导航栏写进同一条规则、盖成了 sidebar-fill，被要求改回。
-  → 现在只对 `<header>` 上色，右侧栏交给官方。
+- **底色用 `--dsw-alias-bg-layer-1`**：官方 `.P3OORG_panel` 写的是 `var(--dsw-alias-bg-base)`，
+  但那个太透（实测 `rgba(255,255,255, calc(0.5 * .45))` ≈ **0.22**，插画明显透出来）。
+  2026-09-14 用户先要求 bg-base、随后更正为 **`--dsw-alias-bg-layer-1`**（标准面板层色，
+  亮 `rgba(243,245,251, calc(1 - <遮挡> * .5))`、暗 `rgba(26,34,56, calc(1 - <遮挡> * .45))`，
+  默认 50% 遮挡时 ≈ .75 / .776，自带主题与遮挡联动，不用写变体）。
+  教训：**先问清是哪个 token，别自己二选一** —— 我按 bg-base 改完又被更正了一次。
 - **分割线与左栏对齐**：官方给的是 `border-left: .5px solid var(--dsw-alias-border-l4)`，
   而左侧栏是 `border-right: .5px solid var(--dsw-alias-border-l3)` —— **l4 比 l3 深一档**
   （实测 α 0.42 vs 0.32），两侧看着不一致。改成 `border-left-color: var(--dsw-alias-border-l3)`。

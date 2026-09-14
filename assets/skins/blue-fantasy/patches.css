@@ -874,13 +874,17 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] [class*="producedRow"] 
 }
 
 /* ═══ 右侧侧边栏面板 ═══
-   底色**不覆盖**：官方 `.P3OORG_panel` 本来就是 `background: var(--dsw-alias-bg-base)`，
-   我们之前把它盖成了 sidebar-fill；2026-09-14 用户要求「应该是 --dsw-alias-bg-base」，
-   故这里只留边框覆盖，让官方底色生效。
+   底色：官方 `.P3OORG_panel` 写的是 `background: var(--dsw-alias-bg-base)`
+   （实测很透：`rgba(255,255,255, calc(0.5 * .45))` ≈ 0.22，插画明显透出来）。
+   2026-09-14 用户先要求 bg-base、随后更正为 **`--dsw-alias-bg-layer-1`**
+   —— 标准面板层色（亮 `rgba(243,245,251, calc(1 - <遮挡> * .5))`、
+   暗 `rgba(26,34,56, calc(1 - <遮挡> * .45))`，默认 50% 遮挡时约 .75/.775），
+   与其它面板同一层次。该 token 自带主题切换与遮挡联动，无需再写变体。
    分割线：官方给的是 `border-left: .5px solid var(--dsw-alias-border-l4)`，
    而左侧栏是 `border-right: .5px solid var(--dsw-alias-border-l3)` —— l4 比 l3 深一档
    （实测 0.42 vs 0.32），两侧不一致；这里改成与左栏同色。 */
 [class*="rightbarCol"] [class*="panel"] {
+  background: var(--dsw-alias-bg-layer-1);
   border-left-color: var(--dsw-alias-border-l3);
 }
 
