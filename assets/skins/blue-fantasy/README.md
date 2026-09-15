@@ -19,9 +19,13 @@ sha256）。也就是说 `~/.dsh/skins/blue-fantasy/patches.css` **不是我们�
 | 文件 | 是什么 |
 |---|---|
 | `patches.css` | 我们的成品（= 上游基准 + 本地追加），`~/.dsh/skins/blue-fantasy/patches.css` 的镜像 |
+| `skin.css` | **token 层**，同样是我们改过的成品（`~/.dsh/skins/blue-fantasy/skin.css` 的镜像）。⚠️ 它也是**上游文件**，市场更新会整文件覆盖 → 必须一并归档才能恢复 |
 | `upstream/patches.base.css` | **上游基准**：最近一次已合入的上游修订原文（用于三方合并） |
 | `upstream/notes.json` | 上游坐标：仓库/分支/路径、基准 commit 与 sha256、市场清单地址、已合入记录 |
 | `provenance.installed.0.2.0.json` | 市场安装时留下的原始 provenance（含各文件安装时 sha256） |
+
+> ⚠️ `scripts/skin-patches.ps1` 目前**只存档 `patches.css`**，改过 `skin.css` 后要手动同步/恢复这一份。
+> 2026-09-15 起本皮肤在 `skin.css` 里有真实改动（tooltip 的两个 token，见下），所以这一条开始有关系了。
 
 ## 日常操作
 

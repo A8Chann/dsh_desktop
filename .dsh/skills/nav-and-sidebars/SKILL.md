@@ -77,9 +77,20 @@ description: >
   > 我原先写的「壳层不做主题区分」**是错的** —— 壳层主题化了，是皮肤自己钉的同值。
   > 教训：**看到「亮暗同值」先搜自己皮肤的 `skin.css` 有没有定义该 token，别急着归因壳层。**
   想彻底修应该改 `skin.css` 的 token（正确层），而不是在 `patches.css` 里覆盖 `[role="tooltip"]`（治标）。
-- 皮肤基线区（L30 附近）只把文字色换成了 `--dsw-alias-tooltip-fg`；底色覆盖加在**本地追加区**，靠层叠顺序取胜（同特异性、后出现者赢）。
-- 2026-09-14 定稿：亮 `rgba(242,245,250,.92)` / 暗 `rgba(16,22,42,.92)`，文字 `#1d2539` / `#dbe2f2`，加 0.5px 发丝边 + `blur(10px)`。
-  浓度取 **.92 固定**、比导航栏 `.75` 更实（气泡只有一行字且直接压在内文上，需要更高对比），同样**不跟滑杆**。
+- 皮肤基线区（L30 附近）只把文字色换成了 `--dsw-alias-tooltip-fg`。
+- ✅ **2026-09-15 定稿：改在 token 层（`skin.css`），`patches.css` 里不再覆盖 `[role="tooltip"]`**：
+  ```
+  skin.css 亮  --dsw-alias-tooltip-bg: #f3f5fb;  --dsw-alias-tooltip-fg: #1a2238;
+  skin.css 暗  --dsw-alias-tooltip-bg: #1a2238;  --dsw-alias-tooltip-fg: #dbe2f2;
+  ```
+  取的是皮肤的 `--dsw-specific-tip` 家族（浮层色）。壳层那条
+  `[role="tooltip"] { background: var(--dsw-alias-tooltip-bg); color: var(--dsw-alias-tooltip-fg) }` 直接就对了，
+  **自动跟随主题**，不需要发丝边 / blur / 深色变体。
+  实测：亮 `rgb(243,245,251)`/`rgb(26,34,56)`、暗 `rgb(26,34,56)`/`rgb(219,226,242)`。
+  - 为什么不留在 `patches.css`：那是治标。真正的开关就是本皮肤的 token，
+    改 token 一行搞定、且**下一个人不会再误判成「壳层的锅」**。
+  - ⚠️ **`skin.css` 也是上游文件**，市场更新会整文件覆盖 → 改过之后必须归档
+    （`assets/skins/blue-fantasy/skin.css`；`scripts/skin-patches.ps1` 只管 `patches.css`，要手动带这一份）。
 - 改底色时**不要**顺手给 `[role="tooltip"]` 的**祖先**加 `backdrop-filter` —— 见 `hash-selector-pitfalls` 第 9 条（会劫持 fixed tooltip 的定位）。加在 tooltip 自身是安全的（它是叶子节点）。
 
 ### 侧边栏行的 hover 浮层（hovercard）是另一处「壳层写死深色」

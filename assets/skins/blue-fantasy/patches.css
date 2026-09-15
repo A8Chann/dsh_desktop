@@ -451,6 +451,7 @@ body[data-ds-dark-theme] [class*="markdown"] [class*="tableScroll"] {
 [data-chat-flow-kind="user"] [class*="actions"],
 [data-chat-flow-kind="steering"] [class*="actions"] {
   position: relative;
+  border-radius: 10px;
   padding: 0 8px;
   width: fit-content;
 }
@@ -462,10 +463,10 @@ body[data-ds-dark-theme] [class*="markdown"] [class*="tableScroll"] {
   position: absolute;
   inset: 0;
   z-index: -1;
-  border-radius: 10px;
   background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
   -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
   backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 10px;
 }
 
 body[data-ds-dark-theme] [data-turn-tail] [class*="actions"]::before,
@@ -520,7 +521,18 @@ body[data-ds-dark-theme] [data-chat-flow-kind="steering"] [class*="actions"]::be
 
    照壳层自己的先例（`[data-goal-bar="true"]` 重复三次提特异性 + 清底）处理：
    只清视觉属性，**不动 padding / width / margin**，交还官方 panel
-   （`background: var(--dsw-specific-tip)` + `border-radius: 12px 12px 0 0` + 0.5px 描边）。 */
+   （`background: var(--dsw-specific-tip)` + `border-radius: 12px 12px 0 0` + 0.5px 描边）。
+
+   ✅ 2026-09-15 同步：上游在 **9407d83** 里把根因修在**壳层适配器**
+   （`packages/skins/skin-center/src/client/runtime/shell-rendering.ts`，给
+   `[data-queue-dock]` 加了和 `[data-goal-bar="true"]` 同样的例外）。
+
+   ⚠️ **但那属于 npm 包，不是皮肤文件** —— 本机装的是 `skin-center 0.3.22`（早于该提交），
+   所以**壳层那层底现在仍然在画**（实测 dock 仍是不透明 `rgb(243,245,251)`、
+   529 vs panel 513）。删掉这条兜底会立刻回归「两层 + 两侧超出」。
+   因此**暂时保留**：等 `@linxin666/dsh-client-ui-skin-center` 发到含 9407d83 的版本、
+   升级后再删（留着也只是对已经干净的 dock 再清一次，无副作用）。
+   这正是「上游已修 ≠ 本机已生效」的典型：壳层改动要走包升级，皮肤改动只需换文件。 */
 [data-phase="active"] [data-slot="conversation.input.dock"] > [data-queue-dock],
 [data-phase="active"] [data-slot="conversation.composer.dock"] > [data-queue-dock] {
   background: transparent !important;
@@ -938,45 +950,41 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] header {
 
 
 /* ═══ hover 提示气泡（[role="tooltip"]，壳层的 `._bubble_1nw3t_1`）═══
-   壳层规则是 `background: var(--dsw-alias-tooltip-bg)`，而该 token 取值
-   **固定淡黄 `#ffffe1`、亮暗主题都不变** —— 与皮肤的冷色调不搭，暗色下更突兀
-   （整屏唯一的暖黄块）。这里换成皮肤的冷色基色并跟随主题。
+   ✅ 2026-09-15 改为在**正确的层**修：不再于此处覆盖 `[role="tooltip"]`，
+   而是直接改本皮肤 `skin.css` 里的两个 token（亮 L87-88 / 暗 L178-179）：
 
-   浓度取**固定值、不跟「气泡不透明度」滑杆**：提示气泡属于界面外框
-   （与顶部导航栏、右侧栏同类），不是「文字背后的托底」——
-   滑杆拉到 0 时它不该跟着一起消失。
-   基色仍与左栏同源：亮 rgb(242 245 250)、暗 rgb(29 37 57)；
-   浓度取 .92，比导航栏的 .75 更实 —— 提示气泡直接压在内文上、只有一行字，需要更高对比。
-   文字色亮色用皮肤主文字色、暗色用浅色；并描一条发丝边，
-   避免浅底压在浅色插画上没边界。 */
-[role="tooltip"] {
-  background: rgba(242, 245, 250, 0.92);
-  color: #1d2539;
-  border: 0.5px solid rgba(28, 37, 70, 0.1);
-  -webkit-backdrop-filter: blur(10px) saturate(1.3);
-  backdrop-filter: blur(10px) saturate(1.3);
-}
+     --dsw-alias-tooltip-bg   亮 #f3f5fb  暗 #1a2238   （= 皮肤自己的 --dsw-specific-tip 家族）
+     --dsw-alias-tooltip-fg   亮 #1a2238  暗 #dbe2f2
 
-body[data-ds-dark-theme] [role="tooltip"] {
-  background: rgba(16, 22, 42, 0.92);
-  color: #dbe2f2;
-  border-color: rgba(160, 180, 230, 0.14);
-}
+   为什么改层：原先这里写着「壳层不做主题区分」——**那个归因是错的**。
+   上游该 token 本来是分主题的（design-platform 亮/暗各一档）；把它钉成亮暗同值
+   `#ffffe1` 的**正是本皮肤自己的 `skin.css`**（自 v1 移植期就在）。
+   维护者 @Aa728848 在 issue #1574 里指出后核实无误，所以覆盖 `[role="tooltip"]`
+   只是治标：真正的开关就在本皮肤的 token 定义里，改那里一行搞定，且自动跟随主题。
+
+   这样也不再需要发丝边与 blur（token 给的是实色，本来就与插画有边界），
+   与「外框不跟气泡滑杆」的原则一致：气泡是浮层，浓度固定。 */
 
 
 /* ═══ 侧边栏「工作区 / 会话」行的 hover 浮层（壳层 hovercard `._card_1b2ny_13`）═══
    壳层把它做成一张**始终深色**的浮卡：`--dsw-hovercard-bg: #2C2C2E` 直接写在元素
    自身上，内部配白字 / 灰字（衬深色）。在亮色的蓝幻想里就是一块近黑，很突兀 ——
    用户 2026-09-14 反馈「工作区会话 hover 的弹窗背景色」。
-   注意它不是 `[role="tooltip"]`（role 是 button），所以上一条 tooltip 规则管不到它。
+   注意它不是 `[role="tooltip"]`（role 是 button），所以 tooltip 那套管不到它。
 
-   改法与 tooltip 一致：冷色浮层 + 跟随主题；并同时把标题/时间/状态三行字
-   换成本主题的文字色（否则白字压浅底会看不见）。
+   ⚠️ 这处**只能在皮肤侧覆盖**，没有更好的层：维护者 @Aa728848 在 issue #1574 里确认
+   该深色是壳层**刻意**的（`HoverCard.module.css` 注释写明 figma 值、亮暗同值），
+   而且因为 token 声明在**卡片元素自身**，`:root` 层级覆盖对它无效 ——
+   所以既不能改 token 层，壳层也不会为单个皮肤改（upstream 已明确不接受）。
+
+   取值与 tooltip 同一套「浮层家族」（= 皮肤的 `--dsw-specific-tip`）：
+   亮 `#f3f5fb` / 暗 `#1a2238`，用**实色**（用户偏好明确而非模糊的配色），
+   并把标题/时间/状态三行字一起换成对应主题的文字色（否则白字压浅底会看不见）。
    选择器带 `html[data-dsh-skin]` 前缀（皮肤系统自动加），特异性高于壳层的
    `._card_1b2ny_13`，因此不受注入顺序影响。 */
 [class*="_card_1b2ny"] {
-  --dsw-hovercard-bg: rgba(242, 245, 250, 0.96);
-  background: rgba(242, 245, 250, 0.96);
+  --dsw-hovercard-bg: #f3f5fb;
+  background: #f3f5fb;
 }
 
 [class*="hoverTitle"] {
@@ -989,8 +997,8 @@ body[data-ds-dark-theme] [role="tooltip"] {
 }
 
 body[data-ds-dark-theme] [class*="_card_1b2ny"] {
-  --dsw-hovercard-bg: rgba(16, 22, 42, 0.96);
-  background: rgba(16, 22, 42, 0.96);
+  --dsw-hovercard-bg: #1a2238;
+  background: #1a2238;
 }
 
 body[data-ds-dark-theme] [class*="hoverTitle"] {
