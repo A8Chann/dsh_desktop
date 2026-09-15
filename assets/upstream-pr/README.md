@@ -79,12 +79,21 @@
 | [PR #1562](https://github.com/zhu1090093659/dsh-web/pull/1562) 修 blue-fantasy 操作行的 hover 气泡跑飞（`backdrop-filter` 劫持 fixed 定位） | **已被关闭**，维护者：`提交issues，目前不接修复PR` |
 | [PR #1563](https://github.com/zhu1090093659/dsh-web/pull/1563) 浮层配色与面板层次（气泡 / hover 卡 / 队列 dock / 答题卡 / 右栏与底部面板） | **已被关闭**，同上 |
 | [PR #1564](https://github.com/zhu1090093659/dsh-web/pull/1564) 输入区配件与顶栏改读正确变量（输入卡模糊 / 背景遮挡） | **已被关闭**，同上 |
-| issue [#1571](https://github.com/zhu1090093659/dsh-web/issues/1571) 操作行 hover 气泡跑飞 | **open**（原来的 #1565 被模板校验器关单，见第九节） |
-| issue [#1572](https://github.com/zhu1090093659/dsh-web/issues/1572) 队列 dock 两层底 + 每边宽 8px | **open** |
-| issue [#1573](https://github.com/zhu1090093659/dsh-web/issues/1573) 右侧面板叠两层 / 分割线不一致 / 底部面板竖线断层 | **open** |
-| issue [#1574](https://github.com/zhu1090093659/dsh-web/issues/1574) 气泡与 hover 卡用未做主题区分的固定色 | **open** |
-| issue [#1569](https://github.com/zhu1090093659/dsh-web/issues/1569) 答题卡缺毛玻璃 | **open** |
-| issue [#1570](https://github.com/zhu1090093659/dsh-web/issues/1570) 配件与顶栏的变量归属 | **open** |
+| issue [#1571](https://github.com/zhu1090093659/dsh-web/issues/1571) 操作行 hover 气泡跑飞 | **已修复**（`9407d83`，改法与本地一致） |
+| issue [#1572](https://github.com/zhu1090093659/dsh-web/issues/1572) 队列 dock 两层底 + 每边宽 8px | **已修复**（`9407d83`，修在**壳层** `shell-rendering.ts`） |
+| issue [#1573](https://github.com/zhu1090093659/dsh-web/issues/1573) 右侧面板叠两层 / 分割线不一致 / 底部面板竖线断层 | **修 2/3**：叠两层 ✅、分割线 ✅；**底部面板断层不修**（称属上游 docking kit 几何，建议去 DSH 主仓提） |
+| issue [#1574](https://github.com/zhu1090093659/dsh-web/issues/1574) 气泡与 hover 卡用未做主题区分的固定色 | **已关闭（not_planned）**；且**我方归因被纠正**：`#ffffe1` 是**本皮肤 `skin.css:87/178` 自己钉的**，不是壳层（详见 `nav-and-sidebars` 的归因更正） |
+| issue [#1569](https://github.com/zhu1090093659/dsh-web/issues/1569) 答题卡缺毛玻璃 | **已关闭（not_planned）**，按现状保留 |
+| issue [#1570](https://github.com/zhu1090093659/dsh-web/issues/1570) 配件与顶栏的变量归属 | **已关闭（not_planned）**，理由「外框密度固定是记录在案的刻意决定」 |
+| issue [#1579](https://github.com/zhu1090093659/dsh-web/issues/1579) 顶栏/右栏密度没跟随「背景遮挡」 | **open** —— 换角度重提（见下方说明） |
+
+> 💡 **#1579 的论证角度值得复用**：被自己早先的 PR 注释挡回来时**不要正面推翻它**，而是
+> （a）承认来历经查证确实出自自己那份 PR（附 commit `5c7c9c92` + merge `b890a79`）；
+> （b）指出**代码已与那段注释自己声明的目标不符** —— 注释写「三栏共享同一基色才读作一个面」，
+> 而本皮肤 `skin.css:95/186` 自己把左栏定义成跟随遮挡、`patches.css` 又把另两栏钉死，
+> 实测三栏**只在遮挡 = 50% 时同密度**（0 时左栏 α1.00 vs 0.75，1 时 0.50 vs 0.75）；
+> （c）说明新请求**不违反**原决定（#1476 只排除了「气泡滑杆」，没排除「壁纸遮挡」，改法读的是遮挡 token）；
+> （d）建议顺手把注释写准确，免得「密度固定」继续被当成「永远不该动」的依据。
 
 > 三个 PR 互不重叠，且 **CI 全绿、mergeable**，但**仍被维护者以「目前不接修复 PR」整体关闭**（2026-09-14）。
 > 结论：本仓库当前只走 issue 流程，先提 issue 等邀请，不要再直接提修复 PR。内容已按 issue 全部重新提交（见上表）。
