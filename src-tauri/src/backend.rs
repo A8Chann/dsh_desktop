@@ -161,6 +161,11 @@ impl Backend {
     /// 等旧循环退出后重新拉起；后端就绪后自动刷新页面（统一各入口行为）。
     pub fn restart(&self, reason: &str) {
         self.log_info(&format!("==== 重启后端: {} ====", reason));
+        // 重启即意味着新插件会被加载：清掉标题栏的「点击重启更新插件」提示
+        // （所有重启入口都汇到这里，所以只在这一处清）
+        if let Some(s) = self.app.try_state::<Arc<AppState>>() {
+            crate::controls::set_plugin_change_pending(&self.app, &s, false);
+        }
         self.set_state("restarting");
         // stop=true + 杀掉自有后端进程树。管理线程正阻塞在 read_line 等子进程输出，
         // 必须先把子进程杀掉才能让它退出（否则 join 会永久卡死，重启即失效）。

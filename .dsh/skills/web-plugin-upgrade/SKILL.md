@@ -25,6 +25,13 @@ node "%APPDATA%\DSH Desktop\versions\<id>\node_modules\@deepseek-ai\dsh\lib\bin.
 
 `dsh plugin` 只是 pnpm 转发器，成功后按**已安装状态**重建 `dsh.profile.bundles`。
 
+## 改完插件如何生效
+
+`dsh plugin ...` 只改 `~/.dsh/profiles/<profile>` 下的依赖，**运行中的后端不会重新加载**：
+文件变更被 `start_plugin_watcher` 检测到（6s 安静期）后，标题栏状态药丸会变成蓝色的
+「点击重启更新插件」——点它即重启后端（等价菜单「重启 Web 服务」），同时会弹一条系统 toast；
+重启就绪后内容页自动刷新，新插件才真正生效。
+
 ## ⚠️ pnpm 11 冷静期
 
 pnpm 11 默认 `minimumReleaseAge` 24h（供应链冷静期）。插件的「兼容新 dsh」版本往往和 dsh 同一天发布，会被静默降级到能通过冷静期的旧版本（日志：`[... was updated to X, not Y, to match the version preferred by your manifests]`）。

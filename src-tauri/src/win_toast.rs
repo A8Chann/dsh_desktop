@@ -213,7 +213,7 @@ pub fn show_plugin_change_toast() -> Result<(), String> {
     tauri_winrt_notification::Toast::new(APP_ID)
         .icon(std::path::Path::new(&icon_uri), tauri_winrt_notification::IconCrop::Square, APP_NAME)
         .title("DSH Desktop — 插件已变更")
-        .text2("请手动重启后端（悬浮条「重启」按钮）以加载新插件")
+        .text2("点击标题栏状态药丸「点击重启更新插件」即可加载")
         .show()
         .map_err(|e| format!("toast 发送失败: {e:?}"))
 }

@@ -12,6 +12,12 @@
     /* 弹窗（菜单/下载/设置/环境）背景浓度：独立于标题栏可调 */
     --dshd-popup-tint: 55%;
   }
+  /* 启动页（loading.html）底色跟系统深浅（纯白 / #0b1220）：首帧标题栏也跟随系统，
+     否则亮色环境下启动瞬间标题栏会先黑一下，与启动页对不上。
+     内容页主题桥上报后由 __dshdTheme 写内联变量覆盖（内联优先级高于此处）。 */
+  @media (prefers-color-scheme: light) {
+    :root { --dshd-bg: #ffffff; --dshd-fg: #1d2539; }
+  }
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
   body {
     font: 12.5px/1.4 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
@@ -54,6 +60,17 @@
   .dot.ok { background: #22c55e; box-shadow: 0 0 5px rgba(34,197,94,.8); }
   .dot.warn { background: #eab308; box-shadow: 0 0 5px rgba(234,179,8,.8); }
   .dot.err { background: #ef4444; box-shadow: 0 0 5px rgba(239,68,68,.8); }
+  /* 插件变更提示态：药丸变成可点按钮「点击重启更新插件」（点击 = 重启后端加载新插件） */
+  .status.clickable {
+    cursor: pointer; user-select: none;
+    color: color-mix(in srgb, var(--dshd-fg) 96%, transparent);
+    border-color: color-mix(in srgb, #3b82f6 55%, transparent);
+    background: color-mix(in srgb, #3b82f6 16%, transparent);
+  }
+  .status.clickable:hover { background: color-mix(in srgb, #3b82f6 28%, transparent); }
+  .status.clickable:active { background: color-mix(in srgb, #3b82f6 36%, transparent); }
+  .dot.hint { background: #3b82f6; box-shadow: 0 0 5px rgba(59,130,246,.85); animation: dshdHintPulse 1.4s ease-in-out infinite; }
+  @keyframes dshdHintPulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
   .right { display: flex; align-items: center; gap: 2px; flex: none; }
   .btn {
     width: 28px; height: 26px; display: grid; place-items: center; border: none; border-radius: 7px;
@@ -440,8 +457,8 @@
   <div class="left">
     <img class="icon" id="icon" alt="" draggable="false" />
     <span class="title">DSH Desktop</span>
-    <span class="badge">v2.7.0</span>
-    <span class="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
+    <span class="badge">v2.8.0</span>
+    <span class="status" id="status-pill" role="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
   </div>
   <div class="right">
     <button class="switch" id="sw" title="切换到 DeepSeek 聊天页" aria-label="切换页面">
@@ -466,7 +483,7 @@
 
 <div class="popup" id="popup-menu">
   <div class="mh">
-    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.7.0</span></div>
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.8.0</span></div>
     <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
   </div>
   <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
@@ -756,6 +773,55 @@
   var label = document.getElementById('status-label');
   var menuStatus = document.getElementById('menu-status');
   var envItem = document.getElementById('menu-env-item');
+  var pill = document.getElementById('status-pill');
+  var pluginHint = false; // 插件已变更、等重启：药丸显示「点击重启更新插件」
+  var statusSeen = false; // 是否已收到过后端状态（未收到前不显示提示、不可点）
+  var hintActive = false; // 有效提示态（= 已收到状态 且 检测到插件变更）——点击处理也只认它
+  var baseCls = 'warn';   // 常规态点色/文案（提示态切换时用它回退）
+  var baseText = '后端未就绪';
+  // 药丸绘制：提示态下点变蓝、在真实状态文案后**追加**「点击重启更新插件」，并变成可点按钮
+  function renderPill() {
+    if (!pill || !dot || !label) return;
+    // 还没收到过后端状态：保持占位「连接中…」，不追加提示、不可点。
+    // 否则会出现「后端未就绪 · 点击重启更新插件」这种自相矛盾的组合（状态桥还没上报时点了也没意义）。
+    if (!statusSeen) {
+      hintActive = false;
+      dot.className = 'dot warn';
+      label.textContent = '连接中…';
+      pill.classList.remove('clickable');
+      pill.tabIndex = -1;
+      pill.setAttribute('role', 'status');
+      pill.title = '';
+      pill.setAttribute('aria-label', '连接中');
+      return;
+    }
+    var hint = pluginHint;
+    hintActive = hint;
+    dot.className = 'dot ' + (hint ? 'hint' : baseCls);
+    // 提示**追加**在真实状态文案之后，不替换（保留原来的状态文本）
+    label.textContent = hint ? baseText + ' · 点击重启更新插件' : baseText;
+    pill.classList.toggle('clickable', hint);
+    pill.tabIndex = hint ? 0 : -1;
+    pill.setAttribute('role', hint ? 'button' : 'status');
+    pill.title = hint ? '检测到插件变更：点击重启后端以加载新插件' : '';
+    pill.setAttribute('aria-label', hint ? baseText + '；插件已变更，点击重启后端加载新插件' : baseText);
+  }
+  // Rust 置位/清除：插件变更 → true；任一次重启后端 → false
+  window.__dshdPluginHint = function (on) { pluginHint = !!on; renderPill(); };
+  if (pill) {
+    // 点击药丸 = 重启后端（与菜单「重启 Web 服务」同一个 action，重启完自动刷新内容页）
+    pill.addEventListener('click', function () {
+      if (!hintActive) return;
+      pluginHint = false;
+      baseCls = 'warn'; baseText = '正在重启…';
+      renderPill();
+      act('restart');
+    });
+    pill.addEventListener('keydown', function (e) {
+      if (!hintActive) return;
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); pill.click(); }
+    });
+  }
   window.__dshdStatus = function (s) {
     var cls = 'warn', text = '后端未就绪';
     switch (s.state) {
@@ -767,9 +833,10 @@
       case 'error': cls = 'err'; text = s.next_retry_sec ? '异常 · ' + s.next_retry_sec + 's 后重试' : '异常'; break;
       case 'stopped': cls = 'warn'; text = '已停止'; break;
     }
-    dot.className = 'dot ' + cls;
-    label.textContent = text;
+    statusSeen = true;
+    baseCls = cls; baseText = text;
     if (menuStatus) menuStatus.textContent = text;
+    renderPill();
     // 外部接管实例（owned=false）无法由桌面端管理环境：菜单项变「接管外部实例」，
     // 点击后将外部实例转正为桌面端自有（不杀），见 controls.rs 的 env-enable action
     var external = (s.state === 'external' && s.owned === false);
@@ -1655,6 +1722,8 @@
     if (e.button !== 0) return;
     var t = e.target.closest('button');
     if (t && (t.id === 'menu-btn' || t.id === 'dl-btn')) return;
+    // 插件变更提示态的药丸是可点按钮：不触发拖动/点外部（start_dragging 会吃掉 click）
+    if (e.target.closest('#status-pill.clickable')) return;
     act('main-click');
     if (!t) act('drag');
   });
@@ -1690,6 +1759,11 @@
       window.__TAURI__.event.listen('backend-status', function (e) { if (e.payload) window.__dshdStatus(e.payload); });
     }
   } catch (e) {}
+
+  // 插件变更提示态：chrome 页晚加载/重载后从 Rust 拉回（状态位在 AppState，见 /plugin-hint）
+  fetch(HTTP + '/plugin-hint').then(function (r) { return r.json(); })
+    .then(function (d) { if (d && window.__dshdPluginHint) window.__dshdPluginHint(d.pending === true); })
+    .catch(function () {});
 
   // F5 重载后立即恢复主题：向 Rust 取缓存主题并应用，避免标题栏闪回默认深蓝黑。
   fetch(HTTP + '/theme').then(function (r) { return r.json(); })

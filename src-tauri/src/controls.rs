@@ -26,6 +26,9 @@ pub struct AppState {
     pub force_exit: AtomicBool,
     /// 当前是否显示在 DeepSeek 内容页（标题栏「切换」拨片状态位）。
     pub deepseek_shown: AtomicBool,
+    /// 检测到插件变更、等待重启后端加载新插件：标题栏状态药丸显示「点击重启更新插件」并可点。
+    /// 由插件监控器置位（set_plugin_change_pending），任一次 Backend::restart 清除。
+    pub plugin_change_pending: AtomicBool,
     /// 菜单弹窗窗口是否可见。
     pub popup_menu_visible: AtomicBool,
     /// 退出选择弹窗窗口是否可见。
@@ -700,6 +703,48 @@ fn ensure_deepseek_webview(app: &AppHandle) -> Option<tauri::Webview> {
     app.get_webview("deepseek")
 }
 
+/// 内容页里的「新窗口」请求（`target="_blank"` / `window.open`）改为交给系统默认浏览器打开。
+///
+/// 背景：wry 在 Windows 上**无条件**接管 WebView2 的 NewWindowRequested，未配置处理器时
+/// 只 `SetHandled(true)` 什么都不做（见 wry webview2/mod.rs）→ dsh 前端用
+/// `window.open(url, "_blank", "noopener")` 打开的外链（模型回答里的链接、插件市场跳转等）
+/// 点了没反应。这里把 http/https 交给默认浏览器，其余（about:blank 等）维持原样拒绝，
+/// 且不碰页面内同窗口导航，登录 / OAuth 回流不受影响。
+pub fn external_link_handler(
+    app: AppHandle,
+) -> impl Fn(
+    tauri::Url,
+    tauri::webview::NewWindowFeatures,
+) -> tauri::webview::NewWindowResponse<tauri::Wry>
+       + Send
+       + 'static {
+    move |url, _features| {
+        let scheme = url.scheme();
+        if scheme == "http" || scheme == "https" {
+            let href = url.as_str().to_string();
+            match tauri_plugin_opener::OpenerExt::opener(&app).open_url(href.clone(), None::<&str>) {
+                Ok(_) => {
+                    if let Some(state) = app.try_state::<Arc<AppState>>() {
+                        state
+                            .log
+                            .info(&format!("[link] 外部链接交由系统默认浏览器打开: {}", href));
+                    }
+                }
+                Err(e) => {
+                    if let Some(state) = app.try_state::<Arc<AppState>>() {
+                        state
+                            .log
+                            .info(&format!("[link] 默认浏览器打开失败: {} ({})", href, e));
+                    }
+                }
+            }
+            return tauri::webview::NewWindowResponse::Deny;
+        }
+        // 其它协议（about:blank、file: 等）：保持改动前的行为，不新开窗口
+        tauri::webview::NewWindowResponse::Deny
+    }
+}
+
 /// 下载拦截（主窗 DSH 与 DeepSeek 内容 WebView 共用）：走自管下载器，避免原生下载链崩溃。
 pub fn intercept_download(webview: tauri::Webview, event: tauri::webview::DownloadEvent) -> bool {
     let app = webview.app_handle().clone();
@@ -915,6 +960,18 @@ pub fn theme_bridge_js(src: &str) -> String {
           if (mc && mc !== 'transparent' && !/^rgba\(0,\s*0,\s*0,\s*0\)$/i.test(mc) && mc !== 'none') bg = mc;
         }
       }
+      // 没有侧边栏的页面（启动页 loading.html、外部页 chat.deepseek.com 等）：采 body / html
+      // 的真实底色。启动页底色是「跟系统的纯白 / #0b1220」，而它不会设置 data-ds-dark-theme，
+      // 只看 dark 标志会落到亮色兜底 #e8ecf5 → 启动时标题栏与启动页对不上（本次修的根因）。
+      if (!bg && !sb) {
+        var cands = [document.body, document.documentElement];
+        for (var ci = 0; ci < cands.length; ci++) {
+          var cel = cands[ci];
+          if (!cel) continue;
+          var cbg = getComputedStyle(cel).backgroundColor;
+          if (cbg && cbg !== 'rgba(0, 0, 0, 0)' && cbg !== 'transparent') { bg = cbg; break; }
+        }
+      }
       // 最后兜底：按 dark 标志用主题基色（浅 #e8ecf5 / 深 #101624）。
       if (!bg) bg = dark ? '#101624' : '#e8ecf5';
       // 去掉 alpha：标题栏自身用 --dshd-tint 浓度混合，带 alpha 会叠乘导致色调过淡、偏灰。
@@ -929,6 +986,9 @@ pub fn theme_bridge_js(src: &str) -> String {
     } catch (e) { return ''; }
   }
   function send() {
+    // 文档还没解析出 body（且页面上没有侧边栏）：先不报——否则会拿常量兜底色先刷一帧错的标题栏，
+    // 启动页尤其明显（亮色系统下会把标题栏先刷成暗色兜底）。DOMContentLoaded 后会立刻补报。
+    if (!document.body && !document.querySelector('[data-pane="sidebar"]')) return;
     var v = read();
     if (!v || v === last) return; // 值没变不重复上报
     last = v;
@@ -945,8 +1005,12 @@ pub fn theme_bridge_js(src: &str) -> String {
     // 保证切深/切浅都能自动跟随，无需手动 F5。
     setInterval(send, 1000);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startObs);
-  else startObs();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { send(); startObs(); });
+  } else {
+    send();
+    startObs();
+  }
 })();"##
     .replace("__SRC__", src)
 }
@@ -1969,6 +2033,14 @@ pub fn start_http_server(app: tauri::AppHandle, state: Arc<AppState>) {
                             cors, st
                         )
                     }
+                    // 只读：插件变更提示态（chrome 页晚加载/重载后拉回，见 set_plugin_change_pending）
+                    ("GET", "/plugin-hint") => {
+                        let on = state.plugin_change_pending.load(Ordering::SeqCst);
+                        format!(
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{}\r\n{{\"pending\":{}}}",
+                            cors, on
+                        )
+                    }
                     ("GET", "/action") => {
                         let name = url_decode(&q.get("name").cloned().unwrap_or_default());
                         state.log.info(&format!("[http] action: {}", name));
@@ -2429,7 +2501,20 @@ fn now_iso() -> String {
 
 // ?????????????????????????????????????????????????????? ????????????????????? ??????????????????????????????????????????????????????
 
-pub fn start_plugin_watcher(state: Arc<AppState>) {
+/// 插件变更提示：把标题栏状态药丸切成可点按钮「点击重启更新插件」。
+/// 状态位存在 AppState（chrome 页晚加载/重载时用 GET /plugin-hint 拉回），
+/// 任一次「重启后端」（Backend::restart，全部重启入口的唯一漏斗）都会清掉它。
+pub fn set_plugin_change_pending(app: &AppHandle, state: &AppState, on: bool) {
+    state.plugin_change_pending.store(on, Ordering::SeqCst);
+    if let Some(c) = app.get_webview("chrome") {
+        let _ = c.eval(&format!(
+            "window.__dshdPluginHint && window.__dshdPluginHint({});",
+            on
+        ));
+    }
+}
+
+pub fn start_plugin_watcher(app: AppHandle, state: Arc<AppState>) {
     std::thread::spawn(move || {
         let mut _watcher: Option<RecommendedWatcher> = None;
         let mut rx: Option<std::sync::mpsc::Receiver<notify::Result<notify::Event>>> = None;
@@ -2488,6 +2573,8 @@ pub fn start_plugin_watcher(state: Arc<AppState>) {
                 if t.elapsed() >= Duration::from_secs(6) {
                     pending = None;
                     state.backend.on_plugin_change();
+                    // 标题栏状态药丸 → 「点击重启更新插件」（点击触发 restart action）
+                    set_plugin_change_pending(&app, &state, true);
                 }
             }
         }

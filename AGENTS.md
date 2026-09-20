@@ -65,6 +65,7 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 | 无头 Edge + CDP 验证 | `headless-verification` |
 | 侧边栏「点不动」误判 | `sidebar-list-misdiagnosis` |
 | 梁神模式预设移除 | `liangshen-preset` |
+| 外链点了没反应 / 用默认浏览器打开 | `external-links` |
 
 ## 本仓库的冷存档（不属于热上下文）
 

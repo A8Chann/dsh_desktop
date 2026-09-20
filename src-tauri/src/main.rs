@@ -97,6 +97,7 @@ fn main() {
             log: log.clone(),
             force_exit: AtomicBool::new(false),
             deepseek_shown: AtomicBool::new(false),
+            plugin_change_pending: AtomicBool::new(false),
             popup_menu_visible: AtomicBool::new(false),
             popup_close_visible: AtomicBool::new(false),
             popup_downloads_visible: AtomicBool::new(false),
@@ -168,7 +169,7 @@ fn main() {
 
         // 控制通道（agent 协作）、插件变更监控与安装结果自动汇报
         controls::start_control_watcher(state.clone());
-        controls::start_plugin_watcher(state.clone());
+        controls::start_plugin_watcher(app.handle().clone(), state.clone());
         controls::start_auto_report(state.clone());
 
         Ok(())
@@ -263,6 +264,9 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .initialization_script(controls::click_forwarder_js(&token))
         .initialization_script(controls::switch_loading_js())
         .initialization_script(controls::popup_backdrop_js())
+        // 外链（模型回答里的网页、插件市场等 window.open / target=_blank）交给系统默认浏览器：
+        // 不配这个处理器时 wry 会把新窗口请求直接吞掉，点了没反应
+        .on_new_window(controls::external_link_handler(app.handle().clone()))
         .on_download(controls::intercept_download);
     window.add_child(dsh, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
 
@@ -277,6 +281,8 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .initialization_script(controls::theme_bridge_js("deepseek"))
         .initialization_script(controls::click_forwarder_js(&token))
         .initialization_script(controls::popup_backdrop_js())
+        // 同 DSH 页：Chat 页里 DeepSeek 回复中的网页链接同样交给系统默认浏览器
+        .on_new_window(controls::external_link_handler(app.handle().clone()))
         .on_download(controls::intercept_download);
     let ds_webview = window.add_child(deepseek, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
     let _ = ds_webview.hide();
