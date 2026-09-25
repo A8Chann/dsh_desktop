@@ -33,20 +33,17 @@
 ## 修复
 
 `src-tauri/src/accel.rs`：挂 WebView2 的 `AcceleratorKeyPressed`，把 **VK_F6(0x75) / VK_F7(0x76)**
-直接 `SetHandled(true)` 吃掉；同时 `SetAreBrowserAcceleratorKeysEnabled(false)` 关掉浏览器加速键。
+直接 `SetHandled(true)` 吃掉。**就这一件事，别顺手多干。**
 
 ```rust
 // 关键 API 路径（tauri 的 PlatformWebview 已经暴露 controller，不用绕 wry）
 webview.with_webview(move |w| {
     let controller = w.controller();              // PlatformWebview::controller()
-    let core = controller.CoreWebView2()?;        // ICoreWebView2
-    let s3 = core.Settings()?.cast::<ICoreWebView2Settings3>()?;
-    s3.SetAreBrowserAcceleratorKeysEnabled(false)?;
     let h = AcceleratorKeyPressedEventHandler::create(Box::new(
         move |_s: Option<ICoreWebView2Controller>,
               args: Option<ICoreWebView2AcceleratorKeyPressedEventArgs>| {
             let mut vk = 0u32; args.VirtualKey(&mut vk)?;
-            if vk == 0x75 || vk == 0x76 { args.SetHandled(true)?; }
+            if vk == 0x75 || vk == 0x76 { args.SetHandled(true)?; }   // 只吞 F6/F7
             Ok(())
         }));
     controller.add_AcceleratorKeyPressed(&h, &mut token)?;
@@ -56,7 +53,18 @@ webview.with_webview(move |w| {
 依赖：`webview2-com = "0.38.2"`、`windows-core = "0.61"`（必须与 tauri-runtime-wry 2.11.4 用的一致；
 `cargo tree -i webview2-com` 应只有一个版本）。`wry` 不用加，`tauri::PlatformWebview` 自带 controller。
 
-## ⚠️ 三个致命细节
+## 🔴 不要再犯：别用 `SetAreBrowserAcceleratorKeysEnabled(false)`「顺手加固」
+
+**2026-09-25 实际犯过，用户立刻发现「F5 也被你干掉了」。** 那个开关：
+
+- **治不了 F6**（F6 不在它的官方覆盖清单里：只有 Ctrl+F/F3、Ctrl+P、Ctrl+R/F5、Ctrl±、
+  Ctrl+Shift+C/F12 等）——对 F6 崩溃毫无帮助；
+- **却会真真切切关掉 F5 刷新 / Ctrl+R / Ctrl+F / Ctrl+P / F12** —— 这些本来是能用的功能。
+
+所以：**只吞键，不动设置。** 修复的判据是「F6 不崩 + F5 照常刷新」两条一起过，
+只测 F6 会漏掉这个回归（当时就是这么漏过去的）。
+
+## ⚠️ 两个致命细节
 
 1. **绝不能在 `setup()` 里同步调 `with_webview`**：它内部走 `run_on_main_thread`，而主线程正卡在
    `setup()` → **死锁**。症状：进程活着、窗口和三个 WebView 宿主都建好了，但页面不渲染、
@@ -64,8 +72,13 @@ webview.with_webview(move |w| {
    正确做法：后台线程 `sleep(1.2s)` → `app.get_webview(label)` → `with_webview(...)`（`accel.rs` 即此结构）。
 2. `AcceleratorKeyPressed` 的回调签名里**第一个参数是 `ICoreWebView2Controller`**（不要写成 handler
    自己），第二个是 `Option<ICoreWebView2AcceleratorKeyPressedEventArgs>`。
-3. `AreBrowserAcceleratorKeysEnabled=false` 的官方清单**不含 F6**（只有 Ctrl+F/F3/Ctrl+P/Ctrl+R/F5/
-   Ctrl±/Ctrl+Shift+C/F12 等），所以**光关它不能治 F6**，必须配 `SetHandled(true)`。
+
+## 验证清单（两条都要过）
+
+1. **F6 不崩**：连发 5~23 次 F6，`msedgewebview2` 进程数保持不变、无新 dump，
+   日志出现 `[accel] <label>: 已吞掉 VK=0x75`。
+2. **F5 照常刷新**：焦点在标题栏时按 F5，日志应出现 `[http] action: reload-visible`
+   （这是 chrome.html 自己的 F5 处理）；顺带能看到 `[backdrop] reload 后开始重推幕布`。
 
 ## 诊断脚本（可复用）
 

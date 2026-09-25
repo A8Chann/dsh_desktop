@@ -34,7 +34,7 @@ $bmp = New-Object System.Drawing.Bitmap $w, $h
 $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.CopyFromScreen($r.L, $r.T, 0, 0, (New-Object System.Drawing.Size $w, $h))
 $g.Dispose()
-$out = "D:\HTML\DSH_Desktop\.tmp-f6\key-" + ($Key -replace '[{}]', '') + "-x$Times.png"
+$out = Join-Path $env:TEMP ("key-" + ($Key -replace '[{}]', '') + "-x$Times.png")
 $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)
 $bmp.Dispose()
 "saved $out"
