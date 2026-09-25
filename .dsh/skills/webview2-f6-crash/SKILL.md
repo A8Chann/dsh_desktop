@@ -102,12 +102,24 @@ Release 换掉 asset 与正文，再删掉 `v2.9.1` 的 tag 与 Release。
 一律用 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File xxx.ps1` 运行
 （本机 pwsh 不在 PATH，且默认执行策略禁止未签名脚本）。
 
-⚠️ 另一个「看着像 bug」的坑：**同时跑两个实例**（或上一个实例没退干净）时，新起的那个
-会有窗口和三个 WebView 宿主、但**没有任何 webview2 进程**、也不写日志——那不是崩溃，
-是单实例/端口竞争。验证前先确认 `Get-Process *dsh*` 是空的。
-
 
 ## 环境坑（这一轮踩到的）
+
+- 🔴 **绝对不要从 DSH 工作区目录里启动这个 exe**（工作区根目录、`dist\` 都一样）。
+  2026-09-25 实测对照（**同一份二进制、SHA256 完全相同**）：
+
+  | 位置 | 结果 |
+  |---|---|
+  | `%TEMP%\dshpath\` | ✅ webview2 = 7、日志正常 |
+  | `D:\dsh-dl\`（D 盘普通目录） | ✅ webview2 = 7、日志正常 |
+  | `C:\Users\HWX\Desktop\` | ✅ webview2 = 7、日志正常 |
+  | `D:\HTML\DSH_Desktop\dist\` | ❌ webview2 = 0、**一行日志都不写**（进程活着、窗口在） |
+  | `D:\HTML\DSH_Desktop\`（工作区根目录） | ❌ 同上 |
+
+  排除了「工作目录」和「启动上下文」两个变量：把 CWD 换成 `C:\Users\HWX` 仍失败；
+  用 `schtasks /run`（完全脱离工具沙箱）也仍失败。**症状就是"启动即空白"**：
+  窗口标题栏在、内容区空的，且 `main.log` 里连「==== 启动 ====」都没有。
+  → 发版产物、桌面副本都是好的；把 exe 放到**工作区之外**的目录再启动即可。
 
 - `main.log` 可能**不更新**：后端起进程持有句柄 / 多个实例；判断应用是否真的启动，
   不要只看日志，要同时看进程 + 窗口 + 子窗口树。
@@ -118,15 +130,9 @@ Release 换掉 asset 与正文，再删掉 `v2.9.1` 的 tag 与 Release。
 - `Start-Process` 在本沙箱会因 stdio 继承而挂住；改用
   `Invoke-CimMethod Win32_Process Create -Arguments @{CommandLine=...; CurrentDirectory=...}`
   （**必须给 `CurrentDirectory`**，否则工作目录是 System32，应用读不到 settings）。
-- `src-tauri/target/debug/dsh-desktop.exe` 在本机**起不来 WebView2**（窗口建好但没有任何
-  webview2 进程）。验证这类修复请用 **release** 产物。
-- **进程抢占才是"起不来"的最常见原因**：同时跑两个实例（或上一个没退干净 / 上一个的
-  `dsh-desktop.exe` 还占着 `target\release` 里的文件）时，新起的那个会有窗口 + 三个 WebView
-  宿主，但**没有任何 webview2 进程、也不写日志**。判据：`Get-Process | ? ProcessName -like '*dsh*'`
-  必须先为空，再启动、再验证（否则会把"抢占"误判成"补丁把应用弄坏了"）。
-- 本地 `target\` 下的 exe 直接双击/拉起时容易撞上上一条；要让进程真正跑起来（WebView2 正常创建），
-  把它复制到桌面路径再启动最稳（实测 desktop 路径下必成，`dist\` 与 `target\release\`
-  冷启动时偶发拿不到 webview2）。
+  ⚠️ 但这个方式**只对"工作区之外"的 exe 有效**，见上面第一条。
+- **启动前先确认没有旧实例**：`Get-Process | ? ProcessName -like '*dsh*'` 必须为空再启动、再验证，
+  否则会把「上一实例还占着」和「工作区路径」这两种"起不来"混在一起，误判成补丁问题。
 - 发版推送：`git push` 在本机会卡在 GCM 凭据交互。改用 Windows 凭据库里的 gho_ token +
   一次性 helper：`git -c credential.helper= -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' push origin main`
   （`$GH_TOKEN` 从 `scripts/gh-cred-reader.cs` 读出后放进环境变量，别写进命令行）。
