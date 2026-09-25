@@ -64,6 +64,14 @@ webview.with_webview(move |w| {
 所以：**只吞键，不动设置。** 修复的判据是「F6 不崩 + F5 照常刷新」两条一起过，
 只测 F6 会漏掉这个回归（当时就是这么漏过去的）。
 
+### 版本线收尾（2026-09-25）
+
+这个回归曾以 `v2.9.1` 之名单独发过一版，用户随后要求**把 2.9.0 直接覆盖重发**：
+源码版本号锁回 `2.9.0` 重新构建，`v2.9.0` tag 强制移动（`git push --force origin v2.9.0`），
+Release 换掉 asset 与正文，再删掉 `v2.9.1` 的 tag 与 Release。
+⚠️ 删了 tag **不会**连带删掉 Release —— 按 tag 查会 404，但 `GET /releases` 里仍在，
+要按 **id** `DELETE /repos/:o/:r/releases/:id` 才干净（其 asset 也要先删）。
+
 ## ⚠️ 两个致命细节
 
 1. **绝不能在 `setup()` 里同步调 `with_webview`**：它内部走 `run_on_main_thread`，而主线程正卡在
