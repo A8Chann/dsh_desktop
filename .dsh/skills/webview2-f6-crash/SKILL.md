@@ -121,6 +121,33 @@ Release 换掉 asset 与正文，再删掉 `v2.9.1` 的 tag 与 Release。
   窗口标题栏在、内容区空的，且 `main.log` 里连「==== 启动 ====」都没有。
   → 发版产物、桌面副本都是好的；把 exe 放到**工作区之外**的目录再启动即可。
 
+  **机制（逐步定位出来的，别只记结论）**：
+
+  1. 失败进程的诊断读数：存活、`19 threads / 302 handles / 80MB`、**三个 `WRY_WEBVIEW`
+     宿主窗口都已创建**，但 **`WebView2Loader.dll` / `d3d11.dll` / `dcomp.dll` 全部未加载**
+     —— 说明它卡在「创建 WebView2 环境」那一步的**早期**，并且是**静默失败**（连自己写日志
+     的代码都没跑到，所以 `main.log` 一行都没有）。
+  2. 判别实验：给同一个工作区里的 exe 加一个环境变量把 WebView2 数据目录指到别处 ——
+
+     ```powershell
+     cmd.exe /c set WEBVIEW2_USER_DATA_FOLDER=D:\dsh-udd&& "D:\HTML\DSH_Desktop\dist\DSH-Desktop-2.9.0-tauri.exe"
+     ```
+
+     → **webview2 = 7，起来了**。指到 `%LOCALAPPDATA%\<任意新目录>` 也一样成功。
+  3. 反向对照：桌面那份 exe **显式**指定默认目录
+     `%LOCALAPPDATA%\io.dsh.desktop\EBWebView` → 也成功（7 个进程 + 13 行日志）。
+  4. 所以卡点是**「工作区里的进程」×「默认数据目录这个路径」这个组合**：
+     只有"工作区 exe + 用默认数据目录"会失败；两边任意一边换掉就好了。
+     目录本身的 ACL 是干净的（`icacls` 只有 SYSTEM/Administrators/HWX 的 FullControl，无 Deny），
+     真正动手的是启动器给工作区进程套的那层沙箱/受限令牌：它对**应用自己的数据目录**
+     （`%LOCALAPPDATA%\io.dsh.desktop`、`%APPDATA%\DSH Desktop`）有额外限制，
+     连日志文件都写不进去 —— 这也解释了为什么失败时"一行日志都没有"。
+     注：`icacls D:\HTML\DSH_Desktop` 里那条 `Everyone:(CI)(DENY)(DC)` 是工作区防删除项，
+     不是本次的原因（它只影响子目录删除）。
+
+  **绕开办法（任选其一）**：把 exe 放到工作区之外启动（桌面/D 盘普通目录/下载目录都行）；
+  或者启动前设 `WEBVIEW2_USER_DATA_FOLDER` 指向工作区外的目录。
+
 - `main.log` 可能**不更新**：后端起进程持有句柄 / 多个实例；判断应用是否真的启动，
   不要只看日志，要同时看进程 + 窗口 + 子窗口树。
 - **本机 pwsh 的 `Add-Type` 在 read-only 沙箱下会被拦**；`Get-CimInstance Win32_Process` 便宜且够用。
