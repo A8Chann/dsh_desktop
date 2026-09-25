@@ -1,6 +1,6 @@
 [package]
 name = "dsh-desktop"
-version = "2.8.0"
+version = "2.9.0"
 description = "DeepSeek Harness 桌面端（Tauri 版）：内嵌 dsh web GUI，自动拉起后端"
 authors = ["A8Chann@github"]
 edition = "2021"
@@ -22,6 +22,12 @@ base64 = "0.22"
 notify = "6"
 ureq = { version = "2", features = ["json"] }
 dirs = "6"
+# F6 会把 WebView2 浏览器进程打崩（见 src/accel.rs 文件头）：
+# 直接用 wry/WebView2 原生 API 挂 AcceleratorKeyPressed 把该键吞掉。
+# 版本必须与 tauri-runtime-wry 2.11.4 依赖的一致，否则 with_webview 的 downcast 会失败。
+wry = "0.55.1"
+webview2-com = "0.38.2"
+windows-core = "0.61"
 
 [profile.release]
 strip = true

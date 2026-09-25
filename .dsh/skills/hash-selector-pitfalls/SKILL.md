@@ -250,6 +250,81 @@ P3OORG_panel       710x874  bg rgba(243,245,251,0.75)   ← 被 [class*="panel"]
 实测判据：改完可见命中里**只有最外层有底色**，等效 alpha 回到 token 原值。
 
 
+## 11. ⭐ 0.1.7 新增的过程行：`[data-step-process]` 与退化的「用时」胶囊（2026-09-24）
+
+0.1.7 把「过程」拆细了，两处新元素（用户截图圈出的红/蓝框）各有坑：
+
+```
+div.O_Ebla_root[data-step-process]                     ← 每个步骤一行（实测一个会话 56 行）
+  ├ div
+  │   └ button.O_Ebla_title[data-process-activity=thinking|webFetch|commands|read|search|write|edit|tools|…]
+  │       ├ span.O_Ebla_leading > [data-step-process-icon] + [data-step-process-chevron]（hover 显形）
+  │       └ span._root_1bw19_1.O_Ebla_label            ← shimmer 文字（同「深度求索中…」族）
+  └ div.O_Ebla_body[data-step-process-body] > div.O_Ebla_content[data-step-process-content]
+        └ …成员行（data-turn-process-member=true）…
+```
+
+**红框（步骤行）**：原样 `bg=rgba(0,0,0,0)` / `backdrop-filter: none` / `padding: 0` → 文字直接压插画上。
+底色**只能加在标题行那个 button**（`[data-process-activity]`）上：
+
+- ❌ 别加在 shimmer 的 label span 上：`_root_1bw19_1` 用 `background-clip: text` 做渐变，上底色会把文字变没。
+- ❌ 别加在 root 上：root 同时包着 `[data-step-process-body]`（展开后的成员行）→ 又是一次「两层背景」。
+- 这些行**原本左对齐**（图标在列左缘 x=425），加 `padding: 1px 8px` 会把图标推右 8px、与上下成员行错开；
+  用 `margin-left: -8px` 让胶囊向左探出 8px，**图标仍在 425**。要改成居中（过程胶囊那种）才换成 `margin-inline: auto`。
+
+```css
+[data-slot="main.conversation"] [data-step-process] [data-process-activity] {
+  background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px; padding: 1px 8px;
+  width: fit-content; max-width: 100%; margin-left: -8px;
+}
+```
+
+**蓝框（「用时 N分M秒」）——就是老的 `[data-turn-process]`**，但 0.1.7 里它**恒为 `disabled`**
+（两次采样：`messages=0/tool-calls=0` 与 `messages=54/tool-calls=118` 且已 `data-open=true`，都 disabled）：
+外壳对 disabled 按钮给 `cursor: not-allowed` + `opacity: .55`
+→ 鼠标移上去出现「🚫 禁用」光标，且 `.55` 把我们的玻璃底一起压灰（用户问「为什么鼠标移动上去有禁用」）。
+它已从「可展开的过程行」降级为**只显示用时的信息条**，按信息条处理：
+
+```css
+[data-slot="main.conversation"] [data-turn-process][disabled] { cursor: default; opacity: 1; }
+```
+⚠️ 只写 `[disabled]` 这一档，别无条件覆盖——将来可交互态还得靠外壳的取值。
+
+**实测判据**（无头 Edge，改完 `Page.reload`）：
+胶囊 `rect=[417,…]`（左缘外扩 8px）、`iconX=425`（与 `member row x=425` 一致）、
+`bg=rgba(242,245,250,.5)`、`bf=blur(10px) saturate(1.3)`、`pad=1px 8px`、`margin-left=-8px`；
+蓝框 `disabled=true / cursor=default / opacity=1`；console error 与异常均为 0。
+
+
+## 12. ⭐ 哈希「漂移」：钉死整串哈希名，升级后必失效（2026-09-24）
+
+CSS-module 的类名是 `_<局部名>_<哈希段>_<行号>`。**局部名稳定，哈希段每次构建都会变。**
+
+- 0.1.5 的 hover 浮卡 = `_card_1b2ny_13` → 0.1.7 变成 **`_card_178vx_13`**；
+- 我们的补丁当年写的是 `[class*="_card_1b2ny"]` → 升级后静默失效，
+  用户看到的症状是「这个框**又**黑了」（外壳的深色默认值回来了，而卡内文字的规则还在生效）。
+- 同理 `_5OnbHa_body` / `lcKema_thinkBody` / `XrJvXW_body` / `o3BgMG_*` / `l_V-RG_*` / `hHd-Xa_*` / `pI_x6G_*`
+  这些**钉了哈希段的**选择器，每次 dsh 升级都要重新核对一遍。
+
+**三条对策（按优先级）**：
+
+1. **语义属性**：`data-slot` / `data-*` / `role` / 结构（`:has()`）——例如 `[data-step-process]`、
+   `[data-turn-process]`、`[data-composer-stats]`。
+2. **组件写在元素行内的变量/属性**（很稳，且常被忽略）：本次改用
+   `div[style*="--dsh-hover-preview-fade"]` 定位 hover 卡 —— 那个变量来自组件自己的 JSX
+   (`style={{...pos, "--dsh-hover-preview-fade": …}}`)，**与哈希无关**，实测全页命中 1 个。
+   同类锚点：行内 `style` 里的自定义属性、`data-closing`、`aria-expanded` 等。
+3. **只保留局部名的子串**：`[class*="_card_"]`（抗漂移）—— 但**先查子串撞车**
+   （`card` 这个局部名在别的模块也可能是 `.card`，如 primitives 的 CodeCard → 见第 1 条坑）。
+   更稳的是「局部名 + 作用域」：`[data-slot="…"] [class*="hoverTitle"]`。
+
+❌ **不要**依赖 `aria-label` 全文（本地化文案，如「复制: …」/「Copy: …」会随语言变）。
+✅ 升级 dsh 后，**把所有 `[class*="<哈希>"]` 规则 grep 一遍**，逐个确认还能命中——
+本次就是靠这条发现 hover 卡规则已死。
+
+
 ## 通用教训
 
 给 `[class*="…"]` 加视觉属性前，先看这条选择器会不会同时命中**同一子树里的多层**；要「只留一层」就得连内层一起重置。跨构建哈希选择器优先加作用域或改用语义属性。

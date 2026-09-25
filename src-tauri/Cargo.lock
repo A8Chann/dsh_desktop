@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "dsh-desktop"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "base64 0.22.1",
  "dirs",
@@ -846,6 +846,9 @@ dependencies = [
  "tauri-runtime",
  "tauri-winrt-notification",
  "ureq",
+ "webview2-com",
+ "windows-core 0.61.2",
+ "wry",
 ]
 
 [[package]]

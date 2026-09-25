@@ -191,6 +191,61 @@ box-shadow: none !important
 
 ---
 
+# 0.1.7 新增：ContextMeter「上下文已用 N%」环形指示（2026-09-24）
+
+**症状**：统计行同一行右侧那颗「◯ 17%」是**没有底的裸环**（用户截图圈出：「这个也是 017 新增的要加样式」）。
+
+**它是谁**：外壳 `@deepseek-ai/dsh-client-ui-conversation` 的 `skeleton/ContextMeter`：
+
+```
+div.uV2eYG_dock                                   ← 停靠行（统计行与它同一行）
+  ├ div[data-slot="conversation.composer.dock"] > [data-composer-stats]   ← 统计行（已有玻璃底）
+  └ span.JObwrW_root > button.JObwrW_trigger[aria-label="上下文已用 17%"]
+        └ svg > circle.JObwrW_track + circle.JObwrW_fill      ← 环形进度
+```
+组件自带 CSS 常态 `background: 0 0`，只有 `:hover` / `[aria-expanded=true]` 才给
+`var(--dsw-alias-interactive-bg-hover)`（8% 靛蓝）；点击弹一个上下文明细面板（`JObwrW_panel`，z-index 1100）。
+
+**⚠️ 关键坑：外壳 accessory 规则覆盖不到它。** 那条只作用于
+`[data-slot="conversation.input.dock"|"conversation.composer.dock"] > *` —— **槽位的直接子元素**；
+而它是 `uV2eYG_dock` 的直接子元素、与 `composer.dock` 槽位宿主**平级**。
+**判据**：看到「本该有底却没底」的配件时，先看它祖先链里 `data-slot` 的层级 ——
+不在那两个槽位之下、或不是其直接子元素，就得自己写规则。
+
+**定位写法**：语义槽位 + 结构，不用哈希也不用 `aria-label`（后者随语言变：zh「上下文已用 N%」/ en「N% of context used」）：
+```css
+[data-slot="conversation.composer.bar"] button:has(svg circle) { /* 带圆环的按钮 */ }
+```
+实测**命中数 = 1**（只有这颗环；面板里的按钮不含 `svg circle`）。改选择器后都数一遍命中数。
+
+**配方**：与同一行的统计行**完全一致**（「输入区配件」族，见上文变量归属表）：
+```css
+[data-slot="conversation.composer.bar"] button:has(svg circle) {
+  background: rgb(from var(--dsw-specific-input-major) 242 245 250 / alpha);
+  backdrop-filter: blur(var(--dsh-input-card-blur, 10px)) saturate(1.3);
+}
+body[data-ds-dark-theme] [data-slot="conversation.composer.bar"] button:has(svg circle) {
+  background: rgb(from var(--dsw-specific-input-major) 29 37 57 / alpha);
+}
+```
+**必须补 hover / 展开态**，否则我们这条特异性更高、会把组件自己的 hover 反馈整个盖掉
+（做法同 `cm-qchip`：保留这层底 + 叠 8% 靛蓝）：
+```css
+… button:has(svg circle):hover,
+… button:has(svg circle)[aria-expanded="true"] {
+  background-color: rgb(from var(--dsw-specific-input-major) 242 245 250 / alpha);
+  background-image: linear-gradient(rgba(74,95,168,.08), rgba(74,95,168,.08));
+}
+/* 深色：底色 29 37 57、叠加层 rgba(160,185,235,.08) */
+```
+
+**实测判据**（无头 Edge，F5 后）：命中数 1；亮 `bg=color(srgb .949 .961 .980/.8)` + `bf=blur(10px) saturate(1.3)`
+—— 与同行统计行**逐字节相同**；暗 `color(srgb .114 .145 .224/.824)`；
+`:hover` = 同底色 + `linear-gradient(rgba(74,95,168,.08)…)`，文字色 `rgb(95,110,147) → rgb(62,75,109)`。
+（悬停验证用 CDP `Input.dispatchMouseEvent{mouseMoved}`，别用 JS 派发 —— CSS `:hover` 只认真实输入。）
+
+---
+
 # Composer 输入区 / 停靠区（dock）样式规则
 
 ## 外壳渲染层的 accessory 规则（第二类白条）

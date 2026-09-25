@@ -1,10 +1,32 @@
 ---
 name: patches-css-maintenance
 description: >
-  patches.css 的存档、上游更新比对与合并、市场覆盖机制。
+  patches.css 的存档、上游更新比对与合并、市场覆盖机制，以及升级 dsh 后的选择器体检（哈希漂移）。
 ---
 
 # patches.css 存档与上游更新
+
+## ⭐ 升级 dsh / 插件后必做：选择器体检（哈希漂移，2026-09-24 立）
+
+dsh 升级后，**钉了 CSS-module 哈希段的选择器会静默失效**（样式悄悄回到上游默认值，没有任何报错）。
+本机已被咬两次：`_card_1b2ny_13` → `_card_178vx_13` 导致「hover 浮卡又黑了」；
+更早还有 `l_V-RG_`、`o3BgMG_` 一族。**别靠肉眼发现**，用基线比对：
+
+```pwsh
+# ① 升级前（当前一切正常时）存基线
+node scripts/cdp/selector-health.mjs --save          # → assets/skins/blue-fantasy/selector-baseline.json
+# ② 升级 dsh / 插件、重启后端、F5 之后比对
+node scripts/cdp/selector-health.mjs --compare       # 退出码 1 = 有回归
+```
+
+- 判定：**「基线有命中、现在 0 命中」= 明确回归**（多半哈希漂移）。
+  `--compare` 会直接列出这些 token；其余「页面未出现」多半只是当前页面没这类元素，别据此改代码。
+- 无参数单跑 = 体检模式：`OK` / `疑似漂移`（页面上存在同局部名不同哈希的类）/ `页面未出现`。
+  需要无头 Edge 在跑（见 `headless-verification`），页面状态越全越好（有工具行 + 展开过正文）。
+- 发现漂移后：到 `node_modules` 搜「同局部名」定位新哈希 → 更新 `patches.css`；
+  **顺手考虑换成语义锚点**（`data-*` / `[data-slot]` / 组件写在元素行内的变量如
+  `div[style*="--dsh-hover-preview-fade"]` / `:has()`）——换掉一条就少一份升级负担。
+- 维护 `patches.css` 的其他规则（上游合并、市场覆盖）见下。
 
 ## 文件性质
 - `patches.css` 是**市场安装件**：`~/.dsh/skins/blue-fantasy/` 来自 dsh-market，安装时留下的 `dsh-market.provenance.json` 记着**每个文件的 sha256**。

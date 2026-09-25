@@ -1,10 +1,11 @@
 ---
 name: nav-and-sidebars
 description: >
-  改顶部导航栏 / 左右侧边栏底色与面板渲染层级（display:contents 宿主坑）。
+  改顶部导航栏 / 左右侧边栏底色与面板渲染层级（display:contents 宿主坑），
+  以及左侧栏底部区（用量摘要 / 动作区 / 设置整行）的布局规则。
 ---
 
-# 顶部导航栏 / 右侧侧边栏 / 左侧栏底色规则
+# 顶部导航栏 / 右侧侧边栏 / 左侧栏底色与底部区布局规则
 
 ## 左侧栏底色（基准色）
 
@@ -93,22 +94,50 @@ description: >
     （`assets/skins/blue-fantasy/skin.css`；`scripts/skin-patches.ps1` 只管 `patches.css`，要手动带这一份）。
 - 改底色时**不要**顺手给 `[role="tooltip"]` 的**祖先**加 `backdrop-filter` —— 见 `hash-selector-pitfalls` 第 9 条（会劫持 fixed tooltip 的定位）。加在 tooltip 自身是安全的（它是叶子节点）。
 
-### 侧边栏行的 hover 浮层（hovercard）是另一处「壳层写死深色」
-`[class*="sessionRow"]` / `projectRow` 悬停会弹一张 244×96 的浮卡，**它的 role 是 `button` 不是 `tooltip`**，
-所以 `[role="tooltip"]` 规则管不到它。壳层定义：`._card_1b2ny_13 { --dsw-hovercard-bg: #2C2C2E; background: var(--dsw-hovercard-bg); ... }`
-—— **token 直接写在元素自身上**，且是「始终深色」设计（内部配白字 `#fff` / 灰字 `#cfd3d6`、`#adb2b8`）。
-2026-09-14 用户反馈后改为冷色浮层：亮 `rgba(242,245,250,.96)` / 暗 `rgba(16,22,42,.96)`，
-标题 `#1d2539` / `#dbe2f2`，时间与状态 `#5a6a8c` / `#a8b6d4`。
+### 侧边栏行的 hover 浮卡（HoverCard）——「又黑了」= 哈希漂移（2026-09-24 二次踩坑）
+
+`[class*="sessionRow"]` / `projectRow` 悬停会弹一张 244 宽的浮卡（`dsh-client-ui-workspace` 的
+`Rows.module.css` 提供内容 + `dsh-client-ui-primitives` 的 `HoverCard.module.css` 提供卡面）。
+**它的 `role` 是 `button` 不是 `tooltip`**，所以 `[role="tooltip"]` 那套管不到它。
+壳层卡面固定深色：`.card{--dsw-hovercard-bg:#2C2C2E; position:fixed; width:244px; padding:12px 16px;
+border-radius:12px; background:var(--dsw-hovercard-bg)}`（是 figma 值、**亮暗同值**，故只能皮肤侧覆盖）。
+卡内文字衬深色：`hoverTitle{color:#fff}`、`hoverPath/hoverTime{color:#cfd3d6}`、`hoverStatus{color:#adb2b8}`。
+
+**⚠️ 2026-09-24 用户报「这个框又黑了」**：原来钉的是 0.1.5 的 `[class*="_card_1b2ny"]`，
+0.1.7 里同一张卡变成 **`_card_178vx_13`**（**局部名 `card` 不变、只有哈希段换**）→ 卡面规则失效、
+外壳深底回来；而卡内三行字的 `[class*="hoverTitle"]` 规则**仍然生效**（深字），
+于是「深字压近黑底」= 又黑了。**教训：钉死「完整哈希名」会随构建漂移，`[class*="<局部名>"]` 才抗漂。**
+
+**修法（改用组件写在元素上的行内变量作锚点）**：
+```css
+div[style*="--dsh-hover-preview-fade"] { --dsw-hovercard-bg: #f3f5fb; background: #f3f5fb; }
+body[data-ds-dark-theme] div[style*="--dsh-hover-preview-fade"] { --dsw-hovercard-bg: #1a2238; background: #1a2238; }
+[class*="hoverTitle"] { color: #1d2539; }
+[class*="hoverPath"], [class*="hoverTime"], [class*="hoverStatus"] { color: #5a6a8c; }
+/* 深色：标题 #dbe2f2、路径/时间/状态 #a8b6d4 */
+```
+- 锚点来自 HoverCard 自己的 JSX：`style={{...pos, "--dsh-hover-preview-fade": `${PREVIEW_FADE_MS}ms`}}`
+  → **每张卡都带这个行内变量，与哈希无关**；实测同一时刻全页命中数 = 1（不 hover 时 0）。
+- `aria-label`（`"复制: <text>"`）是本地化文案，**不能**当锚点。
+- ❌ 也不要用 `[class*="_card_"]`：`card` 这个局部名在别的模块也可能是 `.card`（如 primitives 的 CodeCard），
+  子串会撞车（见 `hash-selector-pitfalls`）。
+- `hoverPath` 是旧补丁漏掉的一行（工作区/项目行才有）：外壳给 `#cfd3d6`，压浅底基本看不见，务必一起收。
+
+**取值**（冷色浮层家族，= 皮肤的 `--dsw-specific-tip`）：亮 `#f3f5fb` / 暗 `#1a2238`，用实色；
+标题 `#1d2539` / `#dbe2f2`，路径·时间·状态 `#5a6a8c` / `#a8b6d4`。实测（F5 后）：
+亮 `bg=rgb(243,245,251)`、`--dsw-hovercard-bg=#f3f5fb`；暗 `bg=rgb(26,34,56)`；console error 0。
 
 **要点**：
-- 只改底色会把白字变成「白字压浅底」→ **标题/时间/状态三行必须一起改**（用 `[class*="hoverTitle"]` 等）。
-- 这些类的样式**不在静态 CSS 里**，是插件运行时注入的 `<style>`；靠**特异性**取胜即可
+- 只改底色会把白字变成「白字压浅底」→ **标题/路径/时间/状态四行必须一起改**。
+- 这些类的样式**不在静态 CSS 里**，是运行时注入的 `<style>`；靠**特异性**取胜即可
   （皮肤系统给每条规则自动加 `html[data-dsh-skin="blue-fantasy"]` 前缀，高于壳层的单类选择器），
   不必关心注入顺序。
 - 找这类问题的通用手法：悬停后遍历 `document.styleSheets`，打印命中元素且带 `background` 的规则并**标出来源**
   （`OURS` / `inline[data-plugin…]` / 哪个包）。
 - ⚠️ 判来源时**别只看「亮暗同值」就归因壳层**：hovercard 的 `#2C2C2E` 确实是壳层写死（`HoverCard.module.css` 注释写明 figma 值、亮暗同值），
   但 tooltip 的 `#ffffe1` 是**本皮肤 `skin.css` 自己钉的**。两者现象一样、来源相反 —— 见上面 tooltip 段的归因更正。
+- 无头验证时**CDP 的 `mouseMoved` 逼不出这张卡**（组件是 JS 按 enter/delay 建的），
+  要对行标题派发 `pointerover/pointerenter/mouseover/mouseenter/mousemove` 才出卡 —— 见 `headless-verification`。
 
 ## 导航栏内部各项：**不加任何背景**
 
@@ -148,3 +177,81 @@ description: >
 Select-String -Pattern "<哈希前缀>|<slot名>"
 ```
 本次 `P3OORG_panel` / `rightbar.session` 只命中官方包，better-sidebar 里一次都没有。
+
+## 左侧栏「底部区」：设置在最底，且与 WebUI 图标行**同一行**（2026-09-24）
+
+**症状**：升级 dsh 0.1.7-rc.1 + `@linxin666/dsh-web-all@0.4.1` 后用户反馈「左侧边栏下方的
+UI 乱了，设置应该在最下侧独立成行」——实测「设置」被挤成左侧 102px 宽、**纵向居中**卡在侧栏中部，
+右边是 cost-meter 额度栈的 417px 窄柱，整块还压到会话列表上。
+
+**用户澄清的「正确形态」**：最底一行 = 设置（左，吃掉剩余宽度）+ WebUI 自己的
+「检查更新 / 远程访问」图标行（右，贴身宽）；其余条目各占整行。设置仍在最底部。
+
+**结构**（外壳 `@deepseek-ai/dsh-client-ui-sidebar`，哈希前缀 `hHd-Xa_`）：
+```
+div.hHd-Xa_root              ← flex column；会话列表 flex:1
+  …header / nav / 会话列表…
+  div.hHd-Xa_footArea        ← 官方 flex-direction:column
+    ├ div.hHd-Xa_footerActions          ← 官方 display:flex
+    │   └ div[data-slot="sidebar.footer.action"]   ← 槽位宿主，display:contents（0×0）
+    │       ├ cm-footer-stack    （cost-meter 额度栈）
+    │       ├ fThDlq_entryRow    （WebUI 的检查更新 / 远程访问）
+    │       └ lc-ov-entry        （dsh-context 上下文洞察）
+    ├ (无类名 div)             ← dsh-usage「今日用量」摘要，**直系**子元素
+    └ div.hHd-Xa_settingsArea
+        └ div[data-slot="sidebar.settings"]        ← 也是 display:contents
+```
+官方 CSS：`.hHd-Xa_footArea{flex-direction:column}`、`.hHd-Xa_settingsArea,.hHd-Xa_footerActions{width:100%}`。
+
+**根因**：web-all 4.x 的 `lib/client.js` 内联了一段 `dsh-web-settings` 的**静态 CSS**（非配置项、无开关可关）：
+```css
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*=footArea]{flex-flow:wrap;align-items:center}
+…[class*=footArea] > :not([class*=settingsArea]):not([class*=footerActions]){flex:100%}
+…[class*=settingsArea]{flex:auto;order:1;width:auto}
+…[class*=footerActions]{flex:none;order:2;align-items:center;width:auto}
+```
+它的**本意**是「最底一行 = 设置 + 我们的图标行」，即把 `footerActions` 当成自己那排小图标。
+但 0.1.7 外壳把**所有**插件注入的 footer 条目都收进 `footerActions`（含 339px 高的额度栈、
+上下文洞察）→ 「设置 + 图标行」那一行变成「设置 102px + 417px 窄柱并排」，
+图标被推到柱子底部、设置被 `align-items:center` 纵向居中 → 就是看到的乱象。
+
+**修法**（已进 `patches.css`）：把 `footerActions` 的**盒子去掉**（`display:contents`），
+让它的条目回到 footArea 的换行布局里（正是上游 CSS 假装的结构），再按上游本意排 order：
+```css
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"]{flex-flow:row wrap;align-items:center}
+…[class*="footArea"] > [class*="footerActions"]{display:contents}
+…[class*="footArea"] > :not([class*="settingsArea"]):not([class*="footerActions"]){flex:1 1 100%;order:0}   /* 用量摘要 */
+…[class*="footArea"] > [class*="footerActions"] > *,
+…[class*="footArea"] > [class*="footerActions"] > * > *{flex:1 1 100%;order:1}                             /* 各条目整行 */
+…[class*="footArea"] > [class*="footerActions"] > *[class*="entryRow"],
+…[class*="footArea"] > [class*="footerActions"] > * > *[class*="entryRow"]{flex:0 0 auto;order:4;width:auto} /* 图标行 */
+…[class*="footArea"] > [class*="settingsArea"]{flex:1 1 auto;order:3;width:auto;min-width:0}              /* 设置 */
+```
+**四个坑**（都实际踩过）：
+1. `footerActions` 之下还有一层**槽位宿主** `div[data-slot="sidebar.footer.action"]`，它自己也是
+   `display:contents` —— 真条目是它的**孙级**。只写 `> *` 会打到那层 0×0 空宿主上（`.cm-footer-stack` 纹丝不动）。
+   所以 `> *` 与 `> * > *` 两级都要写（宿主是 contents 时前者无副作用，宿主若变实体盒也能兜住）。
+2. `display:contents` 后 `footerActions` 自身的 `align-items`/`width` 全部失效（没有盒子），
+   必须对**它的子项**写规则。
+3. `[class*="entryRow"]` 指 WebUI 自己的图标行（`fThDlq_entryRow`），必须限定在
+   `footArea > footerActions` 之下，避免误伤别处的行。
+4. 那个**无类名的用量摘要**自带 `flex:1 1 100%` —— 横排语境里是「占满整行宽」，
+   **不要改成竖排**（竖排时它变成「高度 100%」）；`align-items:center` 也别在竖排下留用，
+   否则设置会被纵向居中（就是最初那个「卡在中部」的现象）。
+- 必须带 `:not([data-sidebar-collapsed])`：收起成 rail 时官方另有居中布局（`width:auto;justify-content:center`）。
+- 顺序规则（order 4 的图标行）写在默认规则（order 1）**之后**，同特异性下靠源码顺序取胜。
+
+**验证**（无头 Edge，数值为主；改完必须 `Page.reload`，皮肤 CSS 只在页面加载时拉一次）：
+```
+footArea [12,239,256,529] flex-flow=row wrap
+  用量摘要        [12,239,256, 98]  order 0
+  cm-footer-stack [12,337,256,339]  order 1
+  lc-ov-entry     [10,676,260, 42]  order 1
+  settingsArea    [12,718,178, 50]  order 3  ← 与下一项同一行
+  entryRow        [190,725, 78, 36] order 4  ← 同底行右侧，垂直中心 743 对齐
+```
+断言：`settings.left + settings.width == entryRow.left`、两者底边同为 footArea 底边。
+
+**无头截图辅助**：桌宠 Live2D 的浮层是 `div.v78Lda_float`（`position:fixed; z-index:2147483000`），
+底部截图时它正好压住设置行；临时注入 `.v78Lda_float{visibility:hidden!important}` 再截，截完删掉该 `<style>`。
+（它的类名里**不含** "pet"，用 `[class*=pet]` 隐藏无效。）

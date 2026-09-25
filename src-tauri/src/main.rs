@@ -10,6 +10,8 @@ mod environments;
 mod settings;
 mod util;
 #[cfg(windows)]
+mod accel;
+#[cfg(windows)]
 mod win_toast;
 
 use backend::Backend;
@@ -269,6 +271,11 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .on_new_window(controls::external_link_handler(app.handle().clone()))
         .on_download(controls::intercept_download);
     window.add_child(dsh, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
+    // F6 会把 WebView2 浏览器进程打崩（内容区变空白外框）→ 见 src/accel.rs
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview("dsh") {
+        accel::guard_webview(&w);
+    }
 
     // DeepSeek 内容页：启动即创建（占位页、隐藏），首次切换才导航到 chat.deepseek.com
     // 必须在外壳层之前创建（子 WebView 后创建者在上层，外壳层要保持在最上）
@@ -286,6 +293,10 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .on_download(controls::intercept_download);
     let ds_webview = window.add_child(deepseek, LogicalPosition::new(0.0, 36.0), LogicalSize::new(win_w, content_h))?;
     let _ = ds_webview.hide();
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview("deepseek") {
+        accel::guard_webview(&w);
+    }
 
     // 外壳层：最后创建（保持在最上层）。透明 WebView：空闲仅 36px 条；
     // 弹层打开时由 Rust 扩展其覆盖范围（透明，内容透过可见，弹层画在这层）
@@ -293,6 +304,10 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .initialization_script(token_script)
         .transparent(true);
     window.add_child(chrome, LogicalPosition::new(0.0, 0.0), LogicalSize::new(win_w, 36.0))?;
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview("chrome") {
+        accel::guard_webview(&w);
+    }
 
     // 兜底：即使 chrome 页加载失败（不会发 ping），也要保证窗口最终可见
     {

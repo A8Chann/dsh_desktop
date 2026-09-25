@@ -50,11 +50,11 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 | 插件安装/升级、冷静期、兼容性 | `web-plugin-upgrade` |
 | 第三方插件本地打补丁 | `plugin-local-patch` |
 | memos-cloud 插件兼容 | `memos-cloud-plugin` |
-| Command Code provider（思考强度；tool 结果图片触发顺序「insufficient tool messages」400 补丁） | `commandcode-provider` |
+| Command Code provider（版本/升级；思考强度；tool 结果图片触发顺序 400，本地补丁已随 0.10.6 退役） | `commandcode-provider` |
 | cost-meter 的 CommandCode 面板 | `cost-meter-commandcode` |
 | cost-meter 图框与 Go 版式对齐 | `cost-meter-plan-box` |
-| 会话迁移 bug | `session-migration` |
-| 皮肤：patches.css 维护与上游合并 | `patches-css-maintenance` |
+| 会话迁移 bug（SOURCE_KINDS 白名单；0.1.7「本轮运行失败 format v4 … producer-owned source kind」） | `session-migration` |
+| 皮肤：patches.css 维护与上游合并；**升级 dsh 后跑选择器体检（哈希漂移）** | `patches-css-maintenance` |
 | 皮肤：能否改 skin.json / hooks | `skin-layer-boundary` |
 | 皮肤：气泡变量联动 | `bubble-skin-vars` |
 | 皮肤：气泡模糊滑块补丁 | `skin-center-knob-patch` |
@@ -66,6 +66,7 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 | 侧边栏「点不动」误判 | `sidebar-list-misdiagnosis` |
 | 梁神模式预设移除 | `liangshen-preset` |
 | 外链点了没反应 / 用默认浏览器打开 | `external-links` |
+| **按 F6 后内容区变空白外框（WebView2 浏览器进程崩溃）** | `webview2-f6-crash` |
 
 ## 本仓库的冷存档（不属于热上下文）
 
@@ -74,7 +75,8 @@ DeepSeek Harness 的 Windows 桌面端：Tauri v2 + WebView2，内嵌 dsh web GU
 - `scripts/` —— 补丁与验证工具：`cost-meter-plan-box.mjs`、`skin-center-bubble-blur.mjs`
   （**已废弃**，功能随上游 0.3.22 发布，脚本自带版本闸门）、`skin-patches.ps1`、
   `session-log.mjs`（多帧 zstd 会话日志：`frames`/`dump`/`raw`/`scan`）、
-  `verify-toolimg-patch.mjs`、`cdp/`（无头验证三件套）。
+  `verify-toolimg-patch.mjs`、`verify-v4-kind-patch.mjs`（v4 source-kind 补丁验证 oracle）、
+  `verify-legacy-session-read.mjs`（旧世代会话读取链迁移验证）、`cdp/`（无头验证：eval / shot / reload / **selector-health 选择器体检**）。
 - 这些用 `AGENTS.md.bak-*` 之类**不要**再堆在根目录。
 
 ## 会话协作约定

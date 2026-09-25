@@ -77,6 +77,60 @@ chain.filter(c => c.backgroundColor !== 'rgba(0, 0, 0, 0)').length
 改完属性/样式**先 `void document.body.offsetHeight` 强制重排再读**，否则拿到旧的 computed 值。
 收尾用一句「基线自检」确认还原：`sidebar` 底色 + `body.hasAttribute('data-ds-dark-theme')`。
 
+### ⚠️ 带 `transition` 的属性：重排还不够，必须等过渡结束
+
+`void offsetHeight` 只解决**重排**，解决不了**过渡**。2026-09-24 实测踩坑：给 `body` 加上
+`data-ds-dark-theme` 后立刻读 `background-color`，拿到的仍是亮色值 —— 一度误判「深色规则全部失效」，
+连**带 `!important` 的字面量探针规则都"不生效"**。真因是该元素有
+`transition: background-color, border-color, box-shadow, color, opacity`（**0.13s**，来自上游 `button` 规则），
+读到的只是过渡起点。
+
+**正确姿势**：把表达式写成 async IIFE（用 `(async () => { … })()`，`awaitPromise` 已开），切完主题等一下再读：
+
+```js
+document.body.setAttribute('data-ds-dark-theme', '')
+await new Promise((r) => setTimeout(r, 600))
+getComputedStyle(el).backgroundColor   // 此刻才是深色真值
+```
+
+实测同一元素：亮 `rgba(242,245,250,0.5)` → 深 `rgba(16,22,42,0.4)`，摘掉属性 600ms 后回到亮色。
+更省事的替代：先注入 `* { transition: none !important }` 探针样式表，读完删掉。
+
+> 排查口诀：**「带 `!important` 的探针规则都不生效」＝ 十有八九在读过渡值，不是级联输了。**
+
+### ⚠️ 「hover 才出现」的浮层：CDP `mouseMoved` 逼不出来，要派发 JS 事件
+
+2026-09-24 实测：`Input.dispatchMouseEvent {type:'mouseMoved'}` 能让 **CSS `:hover`** 生效
+（例如给「上下文已用 N%」环量 hover 底色就成功了），但**由 JS 按 hover 状态渲染的浮层**
+（侧栏会话行的 hover 浮卡 HoverCard）**不会出现** —— 组件走的是 React 的
+`onPointerEnter/onMouseEnter` + 延迟建卡，CDP 的鼠标事件没走到那条路径。
+（排除法：`document.hasFocus()` 与 `matchMedia('(hover:hover)').matches` 实测都是 `true`，不是它们的问题。）
+
+**解法：在页面里对「触发元素」派发一整套事件**（用 async 表达式，等 1.5s 再读）：
+
+```js
+const b = row.getBoundingClientRect();
+const fire = (el, types) => {
+  for (const t of types) {
+    const P = t.startsWith('pointer');
+    const E = P ? PointerEvent : MouseEvent;
+    el.dispatchEvent(new E(t, {
+      bubbles: t !== 'mouseenter' && t !== 'pointerenter',
+      cancelable: true, view: window,
+      clientX: b.x + b.width / 2, clientY: b.y + b.height / 2, pointerType: 'mouse',
+    }));
+  }
+};
+fire(row.querySelector('[class*="title"]') || row,
+     ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'mousemove']);
+await new Promise((r) => setTimeout(r, 1500));
+```
+
+**找浮层本体时，优先用组件写在元素行内的变量/属性作锚点**，比钉 CSS-module 哈希稳：
+本次的 hover 卡带 `style="…;--dsh-hover-preview-fade:150ms"` → `div[style*="--dsh-hover-preview-fade"]`
+（每张卡都有、与哈希无关；实测同一时刻全页命中 1 个）。理由是哈希段会随构建变
+（`_card_1b2ny_13` → `_card_178vx_13`，局部名不变），钉整串必挂 —— 见 `hash-selector-pitfalls` 与 `nav-and-sidebars`。
+
 ### ⚠️ 造数据：`compactTranscript` 才出「N 次工具调用」行
 
 这条过程行不是每个回合都有 —— 必须**同一回合里连续两次工具调用**（≥2 才折叠），

@@ -8,11 +8,19 @@ whenToUse: >
 
 # dsh-cost-meter 的 CommandCode 额度面板
 
-> 记录时间：2026-09-11。
+> 记录时间：2026-09-11；**2026-09-24 修订**：cost-meter 已随 dsh 0.1.7-rc.1 适配升到 **1.7.35**。
+
+## 版本与 0.1.7 适配（2026-09-24）
+
+- 本机 1.7.19 → **1.7.35**。升级主因不是本面板，而是 1.7.19 的 typert codec 缺 `create()` 工厂，在 dsh 0.1.7-rc.1 上让 `typert-loader` 条目不激活（详见 `web-plugin-upgrade` 技能）。
+- **1.7.19 时代的两处本地补丁已被上游合入**（升级前在 `_bak-*/cost-meter-orig-backups/` 留了 `.orig` 存档）：
+  - customunit：`unit` 枚举收紧 `['USD','CNY','EUR']` → 上游变为 `['USD','CNY','EUR','CREDITS']`（store.js 校验 + typert codec + 前端）；
+  - plan-box：MiniMax 图框 `cm-mm` 版式 → 上游 `cm-mm-title`/`cm-bbox cm-mm clickable` 已覆盖 MiniMax 与 Codex 等更多图框。
+- 面板机制不变：`lib/coding-plans.js` 的 `CODING_PLAN_PROVIDERS` / `CODING_PLAN_ENDPOINTS` / `parseCommandCodeCredits`，`store.js` 默认值与 `SECRET_REF_MAP`，`client.js` 注册表与短标签 `CC`。
 
 ## 面板早已内置
 
-`dsh-cost-meter@1.7.19` 起 `commandcode` 就是第 7 家 Coding Plan：
+`dsh-cost-meter` 起 `commandcode` 就是 Coding Plan 厂商之一（1.7.19 起为第 7 家）：
 
 - `lib/coding-plans.js` 的 `CODING_PLAN_PROVIDERS` / `CODING_PLAN_ENDPOINTS` / `parseCommandCodeCredits`
 - `store.js` 的默认值与 `SECRET_REF_MAP`

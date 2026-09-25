@@ -604,6 +604,53 @@ body[data-ds-dark-theme] [data-phase="active"] [data-slot="conversation.composer
   background: rgb(from var(--dsw-specific-input-major) 29 37 57 / alpha) !important;
 }
 
+
+/* ═══ 0.1.7 新增：ContextMeter「上下文已用 N%」环形指示（2026-09-24）═══
+   外壳 `@deepseek-ai/dsh-client-ui-conversation` 的 `skeleton/ContextMeter`：
+
+     div.uV2eYG_dock                                   ← 停靠行（与统计行同一行）
+       ├ div[data-slot="conversation.composer.dock"] > [data-composer-stats]    ← 统计行（已有玻璃底）
+       └ span.JObwrW_root > button.JObwrW_trigger[aria-label="上下文已用 17%"]
+             └ svg > circle.JObwrW_track + circle.JObwrW_fill     ← 环形进度
+
+   组件自带 CSS 常态是 `background: 0 0`，只有 `:hover` / `[aria-expanded]` 才给
+   `var(--dsw-alias-interactive-bg-hover)`（8% 靛蓝）→ 同一行里它是个**没有底的裸环**
+   （用户 2026-09-24：「这个也是 017 新增的要加样式」）。点击它会弹一个上下文明细面板。
+
+   ⚠️ **外壳那条 accessory 规则管不到它**：那条只作用于
+   `[data-slot="conversation.input.dock"|"conversation.composer.dock"] > *`（槽位的**直接子元素**），
+   而它是 `uV2eYG_dock` 的直接子元素、与 `composer.dock` 槽位宿主**平级** → 必须自己写。
+
+   配方与同一行的统计行完全一致（「输入区配件」族）：**颜色取皮肤基色、alpha 借
+   `--dsw-specific-input-major`**（自动联动「背景遮挡」）、模糊读「输入卡模糊」。
+   定位用**语义槽位 + 结构**：`button:has(svg circle)` = 「带圆环的按钮」，
+   既不裸写 `JObwrW_` 这类跨构建会变的哈希，也不依赖会随语言变化的 `aria-label`
+   （zh「上下文已用 N%」/ en「N% of context used」）。
+
+   hover / 展开态：**保留这层底**，再叠一层插件标准的 8% 靛蓝（同 `cm-qchip` 的做法）——
+   我们这条特异性更高，不写就会把组件自己的 hover 反馈整个盖掉。 */
+[data-slot="conversation.composer.bar"] button:has(svg circle) {
+  background: rgb(from var(--dsw-specific-input-major) 242 245 250 / alpha);
+  -webkit-backdrop-filter: blur(var(--dsh-input-card-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-input-card-blur, 10px)) saturate(1.3);
+}
+
+body[data-ds-dark-theme] [data-slot="conversation.composer.bar"] button:has(svg circle) {
+  background: rgb(from var(--dsw-specific-input-major) 29 37 57 / alpha);
+}
+
+[data-slot="conversation.composer.bar"] button:has(svg circle):hover,
+[data-slot="conversation.composer.bar"] button:has(svg circle)[aria-expanded="true"] {
+  background-color: rgb(from var(--dsw-specific-input-major) 242 245 250 / alpha);
+  background-image: linear-gradient(rgba(74, 95, 168, 0.08), rgba(74, 95, 168, 0.08));
+}
+
+body[data-ds-dark-theme] [data-slot="conversation.composer.bar"] button:has(svg circle):hover,
+body[data-ds-dark-theme] [data-slot="conversation.composer.bar"] button:has(svg circle)[aria-expanded="true"] {
+  background-color: rgb(from var(--dsw-specific-input-major) 29 37 57 / alpha);
+  background-image: linear-gradient(rgba(160, 185, 235, 0.08), rgba(160, 185, 235, 0.08));
+}
+
 /* ═══ 补漏：对话中其余行 / 展开正文的毛玻璃（A+B 全量） ═══
    排查出的未覆盖行：折叠「过程」行、分隔/汇总行、goal 行、工具摘要行、
    会话信息行、jobs 任务行、提问条、conversation chips，以及展开的正文
@@ -715,6 +762,66 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] [data-turn-process] {
 /* 展开态把上游那条分隔线还给「过程 ↔ 正文」；收起态不要（否则线正好落在胶囊底边上）。 */
 [data-slot="main.conversation"] [data-turn-process][data-open] {
   border-bottom: .5px solid var(--dsw-alias-border-l2);
+}
+
+
+/* ═══ 0.1.7：过程胶囊退化为「用时」信息条 → 去掉禁用的 🚫 光标（2026-09-24）═══
+   实测 0.1.7 里 `[data-turn-process]` **恒为 `disabled`**（本轮两次采样都是）：
+     - `data-turn-process-messages=0 / -tool-calls=0`（无可展开内容）；
+     - `messages=54 / tool-calls=118` 且已 `data-open=true`（内容已展开）。
+   两种情况下外壳都给它 `disabled` + `opacity: .55` + `cursor: not-allowed`。
+   也就是说它已从「可展开的过程行」变成**只显示用时**的信息条
+   （0.1.7 把「过程」拆成了 56 条 `[data-step-process]` 步骤行，见下一条），
+   于是鼠标移上去出现「🚫 禁用」光标 —— 用户 2026-09-24 提问「为什么鼠标移动上去有禁用」。
+
+   这里按「信息条」处理：光标改回默认，并撤掉外壳那层 `.55` 衰减，
+   让它与其它玻璃胶囊同一读数（底色/模糊沿用上面 `[data-turn-process]` 那条规则）。
+   ⚠️ 只作用于 `[disabled]`，不碰将来可能出现的可交互态。 */
+[data-slot="main.conversation"] [data-turn-process][disabled] {
+  cursor: default;
+  opacity: 1;
+}
+
+
+/* ═══ 0.1.7 新增：步骤过程行 `[data-step-process]`（「已完成分析」「已访问网页，已调用工具…」）═══
+   0.1.7 把过程拆细：回合级 `[data-turn-process]` 退化成只显示用时的信息条（见上一条），
+   每个步骤各占一行 `div.O_Ebla_root[data-step-process]`：
+
+     div.O_Ebla_root[data-step-process=true]
+       ├ div
+       │   └ button.O_Ebla_title[data-process-activity=thinking|webFetch|commands|read|search|…]
+       │       ├ span.O_Ebla_leading > [data-step-process-icon] + [data-step-process-chevron]
+       │       └ span._root_1bw19_1.O_Ebla_label      ← shimmer 文字
+       └ div.O_Ebla_body[data-step-process-body=true]
+           └ div.O_Ebla_content[data-step-process-content=true]
+               └ …成员行（data-turn-process-member=true）…
+
+   实测（未适配）：标题行 `bg=rgba(0,0,0,0)`、`backdrop-filter: none`、`padding: 0`
+   → 文字直接压在插画上（用户 2026-09-24：「017 新增的需要适配加底色和模糊」）。
+
+   ⚠️ 底色**不能加在 shimmer 那个 span 上**：`_root_1bw19_1` 与「深度求索中…」状态行同族，
+   用 `background-clip: text` 做渐变，给它上底色会把文字变没。
+   ⚠️ 也**不加在 root 上**：root 同时包着 `[data-step-process-body]`（展开后的成员行），
+   在它上面铺底 = 给整块内容加一层背景 → 就是之前踩过的「两层背景」。
+   所以只给**标题行那个 button**（`[data-process-activity]`）上玻璃底，并 `width: fit-content`。
+
+   对齐：这些行原本左对齐（图标在列左缘 x=425），这里**保持左对齐**（不加 `margin: auto`，
+   以免 56 条步骤行整体重排成参差的居中列），只用 `margin-left: -8px` 让胶囊向左探出 8px，
+   使图标位置不动、仍与上下成员行对齐。
+   若日后想跟过程胶囊一样居中：把 `margin-left` 换成 `margin-left: auto; margin-right: auto`。 */
+[data-slot="main.conversation"] [data-step-process] [data-process-activity] {
+  background: rgb(242 245 250 / calc(var(--dsh-skin-bubble-alpha, .5) * 1));
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.3);
+  border-radius: 8px;
+  padding: 1px 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: -8px;
+}
+
+body[data-ds-dark-theme] [data-slot="main.conversation"] [data-step-process] [data-process-activity] {
+  background: rgb(16 22 42 / calc(var(--dsh-skin-bubble-alpha, .5) * .8));
 }
 
 
@@ -966,23 +1073,32 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] header {
    与「外框不跟气泡滑杆」的原则一致：气泡是浮层，浓度固定。 */
 
 
-/* ═══ 侧边栏「工作区 / 会话」行的 hover 浮层（壳层 hovercard `._card_1b2ny_13`）═══
-   壳层把它做成一张**始终深色**的浮卡：`--dsw-hovercard-bg: #2C2C2E` 直接写在元素
-   自身上，内部配白字 / 灰字（衬深色）。在亮色的蓝幻想里就是一块近黑，很突兀 ——
-   用户 2026-09-14 反馈「工作区会话 hover 的弹窗背景色」。
-   注意它不是 `[role="tooltip"]`（role 是 button），所以 tooltip 那套管不到它。
+/* ═══ 侧边栏「工作区 / 会话」行的 hover 浮卡（外壳 `HoverCard`）═══
+   外壳把它做成一张**始终深色**的浮卡：
+     `.card{--dsw-hovercard-bg:#2C2C2E; position:fixed; width:244px; padding:12px 16px;
+            border-radius:12px; background:var(--dsw-hovercard-bg)}`
+   （`dsh-client-ui-primitives/lib/HoverCard.module.css` 注释写明是 figma 值、亮暗同值），
+   卡内文字由消费者 `dsh-client-ui-workspace` 的 `Rows.module.css` 给：
+   `hoverTitle{color:#fff}`、`hoverPath/hoverTime{color:#cfd3d6}`、`hoverStatus{color:#adb2b8}`
+   —— 全部衬深色。在亮色的蓝幻想里就是一块近黑，很突兀（用户 2026-09-14 首次反馈）。
 
-   ⚠️ 这处**只能在皮肤侧覆盖**，没有更好的层：维护者 @Aa728848 在 issue #1574 里确认
-   该深色是壳层**刻意**的（`HoverCard.module.css` 注释写明 figma 值、亮暗同值），
-   而且因为 token 声明在**卡片元素自身**，`:root` 层级覆盖对它无效 ——
-   所以既不能改 token 层，壳层也不会为单个皮肤改（upstream 已明确不接受）。
+   ⚠️ **2026-09-24 又黑了一次 = 哈希漂移。** 原选择器钉的是 0.1.5 的 `[class*="_card_1b2ny"]`；
+   0.1.7 里同一张卡变成 `_card_178vx_13`（**局部名 `card` 不变，哈希段换了**），于是卡面规则失效
+   → 外壳默认深底回来，而卡内三行字的规则**仍然生效**（深字压近黑底），用户看到「这个框又黑了」。
+   → 改成按**组件写在卡片元素上的行内变量**定位：
 
-   取值与 tooltip 同一套「浮层家族」（= 皮肤的 `--dsw-specific-tip`）：
-   亮 `#f3f5fb` / 暗 `#1a2238`，用**实色**（用户偏好明确而非模糊的配色），
-   并把标题/时间/状态三行字一起换成对应主题的文字色（否则白字压浅底会看不见）。
-   选择器带 `html[data-dsh-skin]` 前缀（皮肤系统自动加），特异性高于壳层的
-   `._card_1b2ny_13`，因此不受注入顺序影响。 */
-[class*="_card_1b2ny"] {
+     <div class="_card_<hash>_N _copyable_<hash>_M" role="button" aria-label="复制: …"
+          style="left:…;top:…;--dsh-hover-preview-fade:150ms">
+
+   `--dsh-hover-preview-fade` 来自 HoverCard 自己的 JSX（淡入淡出用），**与哈希无关**；
+   实测同一时刻全页命中数 = 1（不 hover 时为 0）。**别再回去钉 `_card_<hash>`。**
+   （`aria-label` 不能当锚点：它是本地化文案「复制: …」/「Copy: …」。）
+
+   取值与 tooltip 同一套「浮层家族」（= 皮肤的 `--dsw-specific-tip`）：亮 `#f3f5fb` / 暗 `#1a2238`，
+   用**实色**（用户偏好明确而非模糊的配色）；标题 / 路径 / 时间 / 状态四行字一起换色
+   —— 只改底色会把白字变成「白字压浅底」，看不见。
+   选择器带 `html[data-dsh-skin]` 前缀（皮肤系统自动加），特异性高于外壳的 `._card_<hash>`。 */
+div[style*="--dsh-hover-preview-fade"] {
   --dsw-hovercard-bg: #f3f5fb;
   background: #f3f5fb;
 }
@@ -991,12 +1107,15 @@ body[data-ds-dark-theme] [data-slot="main.conversation"] header {
   color: #1d2539;
 }
 
+/* `hoverPath` 是卡里另外一行（工作区 / 项目行用；会话行通常没有）—— 旧补丁漏了它，
+   在浅底上它是外壳的 `#cfd3d6`，基本看不见，这里一并收进来。 */
+[class*="hoverPath"],
 [class*="hoverTime"],
 [class*="hoverStatus"] {
   color: #5a6a8c;
 }
 
-body[data-ds-dark-theme] [class*="_card_1b2ny"] {
+body[data-ds-dark-theme] div[style*="--dsh-hover-preview-fade"] {
   --dsw-hovercard-bg: #1a2238;
   background: #1a2238;
 }
@@ -1005,7 +1124,87 @@ body[data-ds-dark-theme] [class*="hoverTitle"] {
   color: #dbe2f2;
 }
 
+body[data-ds-dark-theme] [class*="hoverPath"],
 body[data-ds-dark-theme] [class*="hoverTime"],
 body[data-ds-dark-theme] [class*="hoverStatus"] {
   color: #a8b6d4;
+}
+
+
+/* ═══ 左侧栏底部：整块条目各占一行，**设置与 WebUI 图标行共用最底一行**（2026-09-24）═══
+   症状：用户升级 dsh 0.1.7-rc.1 + `@linxin666/dsh-web-all@0.4.1` 后反馈
+   「左侧边栏下方的 UI 乱了，设置应该在最下侧独立成行」——
+   实测「设置」被挤成左侧 102px 宽、纵向居中卡在侧栏中部，右侧是 cost-meter 额度栈的
+   417px 窄柱，整块 footer 还压到会话列表上。
+
+   根因（computed + 规则溯源）：web-all 4.x 的 `lib/client.js` 内联了一段
+   `dsh-web-settings` 的**静态 CSS**（非配置项、无开关可关）：
+     [data-dsh-frame]:not([data-sidebar-collapsed]) [class*=footArea]{flex-flow:wrap;align-items:center}
+     …[class*=footArea] > :not([class*=settingsArea]):not([class*=footerActions]){flex:100%}
+     …[class*=settingsArea]{flex:auto;order:1;width:auto}
+     …[class*=footerActions]{flex:none;order:2;align-items:center;width:auto}
+   **它的本意（用户 2026-09-24 澄清）**：最底一行 = 设置（左，自适应）+ WebUI 自己的
+   「检查更新 / 远程访问」图标行（右，贴身宽）；其它直系条目各占整行。
+   问题在 0.1.7：外壳把**所有**插件注入的 footer 条目收进新容器 `.hHd-Xa_footerActions`
+   （槽位 `sidebar.footer.action`）——里面除了那排图标，还塞进了 cost-meter 额度栈（339px 高）
+   与 dsh-context 的「上下文洞察」。于是 `order:2;width:auto` 让「设置 + 图标行」那一行
+   变成「设置 102px + 417px 窄柱并排」，图标被推到柱子最底部，设置被纵向居中 → 就是看到的乱象。
+
+   修法：把 footerActions 的**盒子去掉**（`display:contents`），让它的子项回到 footArea
+   的换行布局里（这正是上游 CSS 假装的结构），再按上游本意排 order：
+     用量摘要(0) → 额度栈(1) → 上下文洞察(1) → ［设置(3, 自适应) + 图标行(4, 贴身宽)］
+   最后一行即「设置 …… 检查更新 远程访问」；设置仍在最底部，符合「设置在最下侧」。
+
+   ⚠️ 坑 1：`footerActions` 之下还有一层**槽位宿主** `div[data-slot="sidebar.footer.action"]`，
+   它自己也是 `display:contents`（0×0）——真正的条目是它的**孙级**。
+   只写 `> *` 会打到那层空宿主上（`.cm-footer-stack` 等纹丝不动）。所以规则要同时覆盖
+   `> *` 与 `> * > *` 两级：前者在宿主是 contents 时无副作用，宿主若变回实体盒也能兜住。
+   ⚠️ 坑 2：`display:contents` 之后 footerActions 自身的 `align-items`/`width` 全部失效
+   （没有盒子了），必须对**它的子项**写规则。
+   ⚠️ 坑 3：`[class*="entryRow"]` 指 WebUI 自己的图标行（`fThDlq_entryRow`），
+   必须限定在 `footArea > footerActions` 之下，避免误伤别处的行。
+   ⚠️ 坑 4：那个**无类名的直系子元素**（dsh-usage 用量摘要）自带 `flex:1 1 100%` ——
+   在横排语境里含义是「占满一整行宽」，**别改成竖排**（竖排会变成「高度 100%」）。
+   选择器带 `:not([data-sidebar-collapsed])`（收起成 rail 时官方另有居中布局）；
+   皮肤系统会自动加 `html[data-dsh-skin=…]` 前缀，特异性 (0,6,1)~(0,7,1) 高于插件那条 (0,3,0)，
+   因此不依赖注入顺序。 */
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"] {
+  flex-flow: row wrap;
+  align-items: center;
+}
+
+/* 让插件容器「消失」，其子项直接参与上面的换行布局 */
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"] > [class*="footerActions"] {
+  display: contents;
+}
+
+/* 用量摘要：整行，排最前 */
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"] > :not([class*="settingsArea"]):not([class*="footerActions"]) {
+  flex: 1 1 100%;
+  order: 0;
+}
+
+/* 动作区里的每个条目（含穿透槽位宿主那一级）：默认都各占整行，排在设置之前 */
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"] > [class*="footerActions"] > *,
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"] > [class*="footerActions"] > * > * {
+  flex: 1 1 100%;
+  order: 1;
+}
+
+/* WebUI 自己的「检查更新 / 远程访问」图标行：拉回最底一行右侧、贴身宽
+   （写在默认规则之后 → 同特异性下靠源码顺序取胜） */
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"] > [class*="footerActions"] > *[class*="entryRow"],
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"] > [class*="footerActions"] > * > *[class*="entryRow"] {
+  flex: 0 0 auto;
+  order: 4;
+  width: auto;
+  min-width: 0;
+}
+
+/* 设置：与图标行共用最底一行，吃掉剩余宽度 */
+[data-dsh-frame]:not([data-sidebar-collapsed]) [class*="footArea"] > [class*="settingsArea"] {
+  flex: 1 1 auto;
+  order: 3;
+  width: auto;
+  min-width: 0;
 }
