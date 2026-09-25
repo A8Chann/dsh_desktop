@@ -98,4 +98,14 @@ webview.with_webview(move |w| {
   `Invoke-CimMethod Win32_Process Create -Arguments @{CommandLine=...; CurrentDirectory=...}`
   （**必须给 `CurrentDirectory`**，否则工作目录是 System32，应用读不到 settings）。
 - `src-tauri/target/debug/dsh-desktop.exe` 在本机**起不来 WebView2**（窗口建好但没有任何
-  webview2 进程）。验证这类修复请用 **release** 产物，或直接换桌面上的打包 exe。
+  webview2 进程）。验证这类修复请用 **release** 产物。
+- **进程抢占才是"起不来"的最常见原因**：同时跑两个实例（或上一个没退干净 / 上一个的
+  `dsh-desktop.exe` 还占着 `target\release` 里的文件）时，新起的那个会有窗口 + 三个 WebView
+  宿主，但**没有任何 webview2 进程、也不写日志**。判据：`Get-Process | ? ProcessName -like '*dsh*'`
+  必须先为空，再启动、再验证（否则会把"抢占"误判成"补丁把应用弄坏了"）。
+- 本地 `target\` 下的 exe 直接双击/拉起时容易撞上上一条；要让进程真正跑起来（WebView2 正常创建），
+  把它复制到桌面路径再启动最稳（实测 desktop 路径下必成，`dist\` 与 `target\release\`
+  冷启动时偶发拿不到 webview2）。
+- 发版推送：`git push` 在本机会卡在 GCM 凭据交互。改用 Windows 凭据库里的 gho_ token +
+  一次性 helper：`git -c credential.helper= -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' push origin main`
+  （`$GH_TOKEN` 从 `scripts/gh-cred-reader.cs` 读出后放进环境变量，别写进命令行）。
