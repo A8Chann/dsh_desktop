@@ -23,6 +23,8 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{LogicalPosition, LogicalSize, Manager, RunEvent, WebviewUrl};
 
 fn main() {
+    // TEMP-BOOT-TRACE：主线程第一条记录，用于区分"进程没起来"和"卡在 setup 里"
+    crate::util::boot_trace("main() 进入");
     // panic hook：崩溃前把 panic 位置写入 %APPDATA%\DSH Desktop\logs\panics.log，
     // 用于定位偶发 fail-fast（0xc0000409，如 WebView2 下载链路）的准确 panic 点。
     {
@@ -33,6 +35,12 @@ fn main() {
             let bt = std::backtrace::Backtrace::force_capture();
             msg.push_str(&format!("BACKTRACE:\n{}", bt));
             let _ = std::io::Write::write_all(&mut std::io::stderr(), msg.as_bytes());
+            if let Ok(tem) = std::env::var("TEMP") {
+                let p = std::path::PathBuf::from(&tem).join("dsh-boot-trace.log");
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
+                    let _ = writeln!(f, "PANIC: {info}");
+                }
+            }
             if let Ok(appdata) = std::env::var("APPDATA") {
                 let p = std::path::PathBuf::from(&appdata)
                     .join("DSH Desktop")
@@ -50,9 +58,10 @@ fn main() {
     }
     let app = controls::register_scheme(
         tauri::Builder::default()
-            // 单实例：必须最先注册。重复启动（双击两次图标等）时聚焦已有窗口后退出，
-            // 否则第二个实例的 19431 控制服务绑定失败，其标题栏按钮会全部操作到第一个窗口上。
+            // TEMP-BOOT-TRACE
             .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+                // TEMP-BOOT-TRACE：走到这里说明"已有实例"，本进程会直接退出
+                crate::util::boot_trace("单实例回调触发（已有实例在跑）→ 本进程将退出");
                 show_main_window(app);
             }))
             .plugin(tauri_plugin_notification::init())
@@ -83,14 +92,21 @@ fn main() {
         _ => {}
     })
     .setup(|app| {
+        // TEMP-BOOT-TRACE：临时引导日志（走 %TEMP%，不依赖应用的 Logger），用完即删
+        crate::util::boot_trace("setup 进入");
         // 启动时把当前 dsh（手动路径/全局）登记进环境管理，保证面板有记录
         let mut loaded = settings::load_settings();
+        crate::util::boot_trace("settings 已读");
         crate::environments::ensure_seed_versions(&mut loaded);
         crate::settings::save_settings(&loaded);
+        crate::util::boot_trace("settings 已回写");
         let settings = Arc::new(Mutex::new(loaded));
-        let log = Arc::new(util::Logger::new(settings::logs_dir().join("main.log")));
+        let session_log_path = settings::logs_dir().join("main.log");
+        let log = Arc::new(util::Logger::new(session_log_path.clone()));
+        crate::util::boot_trace("Logger 已建");
         log.info(format!("==== DSH Desktop (Tauri) 启动：{} ====", env!("CARGO_PKG_VERSION")).as_str());
         log.info(format!("settings: {:?}", settings.lock().unwrap()).as_str());
+        crate::util::boot_trace("启动日志已写");
 
         let backend = Arc::new(Backend::new(app.handle().clone(), settings.clone(), log.clone()));
         let state = Arc::new(AppState {
@@ -115,6 +131,7 @@ fn main() {
             theme_deepseek: Mutex::new(None),
             window_revealed: AtomicBool::new(false),
             token: controls::generate_token(),
+            session_log_path,
         });
         app.manage(state.clone());
         // 自管下载器（拦截 WebView2 下载后由 Rust 线程下载，支持进度/暂停/取消）
@@ -153,19 +170,24 @@ fn main() {
         }
 
         // 壳窗口：标题栏 chrome WebView + DSH 内容 WebView；DeepSeek 内容 WebView 首次切换时懒建
+        crate::util::boot_trace("即将 create_main_window");
         create_main_window(app)?;
+        crate::util::boot_trace("create_main_window 返回");
 
         // 托盘 + 菜单
         setup_tray(app)?;
+        crate::util::boot_trace("托盘就绪");
 
         // 后端管理
         backend.start();
+        crate::util::boot_trace("backend.start 返回");
 
         // 就绪后导航 DSH 内容 WebView；导航后推送一次状态给 chrome 标题栏
         start_navigator(app.handle().clone(), state.clone());
 
         // 本地 HTTP 控制服务（状态/窗口控制/图标/前端日志打点/主题）
         controls::start_http_server(app.handle().clone(), state.clone());
+        crate::util::boot_trace("setup 结束（HTTP 服务已起）");
 
         // 主题由 DSH 页内主题桥事件驱动上报（见 dsh WebView 的 theme_bridge_js），无 Rust 轮询
 

@@ -8,6 +8,29 @@ use std::time::Duration;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+/// TEMP-BOOT-TRACE：临时引导日志，写到 %TEMP%\dsh-boot-trace.log。
+/// 只在设置了环境变量 `DSH_BOOT_TRACE=1` 时写；用于定位"启动即空白、main.log 一行都没有"。
+pub fn boot_trace(msg: &str) {
+    if std::env::var("DSH_BOOT_TRACE").unwrap_or_default() != "1" {
+        return;
+    }
+    let dir = std::env::var("TEMP").unwrap_or_else(|_| "C:\\Windows\\Temp".to_string());
+    let path = std::path::PathBuf::from(dir).join("dsh-boot-trace.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let _ = writeln!(
+            f,
+            "[{}] pid={} {}",
+            format_utc(secs),
+            std::process::id(),
+            msg
+        );
+    }
+}
+
 pub struct Logger {
     path: PathBuf,
     lock: Mutex<()>,

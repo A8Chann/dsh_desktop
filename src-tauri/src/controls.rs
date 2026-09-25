@@ -62,6 +62,9 @@ pub struct AppState {
     /// 没有它，本机浏览器里的**任意网页**都能用 `<img src="http://127.0.0.1:19431/action?name=quit">`
     /// 关掉应用、删下载、改设置（img/GET 不受同源策略限制）。
     pub token: String,
+    /// 本次会话的主日志路径：WebView2 浏览器进程死亡时（`accel.rs`）需要在进程退出前
+    /// 追加一行“死因”，那时 AppState 里的 Logger 已经不可靠，直接用路径重开追加。
+    pub session_log_path: std::path::PathBuf,
 }
 
 /// 生成一次性控制令牌（本地防护，非密码学用途）：

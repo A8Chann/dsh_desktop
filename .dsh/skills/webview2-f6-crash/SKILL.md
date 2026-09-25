@@ -103,7 +103,50 @@ Release 换掉 asset 与正文，再删掉 `v2.9.1` 的 tag 与 Release。
 （本机 pwsh 不在 PATH，且默认执行策略禁止未签名脚本）。
 
 
+## 🧟 「启动是空的 / 双击没反应」的真凶：僵尸实例占着单实例锁
+
+**2026-09-25 花了很久才抓到，务必先看这条。**
+
+现象：双击图标后**什么都没有**（或只有一个空白外框的窗口），`main.log` **一行都不写**。
+
+真凶链条：
+
+1. 某个时刻 WebView2 浏览器进程死了（F6 崩、被强杀、渲染崩溃……），**应用进程却还活着**，
+   于是三个 WebView 只剩空壳窗口 = 一个"空白外框"的僵尸实例；
+2. 这个僵尸**握着单实例 mutex**（`tauri-plugin-single-instance`，标识符 `io.dsh.desktop`，
+   跟 exe 名字无关）；
+3. 之后用户再双击启动，新进程在**单实例回调里就直接退出了** → 表现为"双击没反应 / 启动即空白"，
+   而且**日志一行都不写**（`setup()` 根本没跑）；
+4. 越试越像"程序坏了"，其实只是那个看不见的僵尸在挡路。
+
+排查命令（**按路径**匹配，别只按进程名 —— 改名后的副本/测试副本会漏掉）：
+
+```powershell
+Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -match 'dsh|DSH' } |
+  Select-Object ProcessId, Name, ExecutablePath, CreationDate | Format-Table -AutoSize
+```
+
+判据：如果列出来的实例数 > 1，或者有一个实例的 webview2 进程数是 0 —— 那就是僵尸，先 `Stop-Process` 掉它再启动。
+
+**产品侧的修复（v2.9.1 起）**：`accel.rs` 里装了 `BrowserProcessExited` 看门狗
+（`ICoreWebView2Environment5::add_BrowserProcessExited`，注意这个方法在 **Environment5** 上，
+`w.environment()` 拿到 Environment 后要先 `.cast::<ICoreWebView2Environment5>()`）。
+浏览器进程一死就：写一行死因进日志 → 300ms 后 `std::process::exit(0)` 把自己收掉，
+把单实例锁让出来。用户下次启动即可正常。日志形如：
+
+```
+[accel] !! WebView2 浏览器进程已退出（kind=1 browserPid=34660）：界面已失效，应用将自动退出以免占住单实例锁
+```
+
+**另外**：`main()` 里现在有一条 `DSH_BOOT_TRACE=1` 才生效的引导日志（写到
+`%TEMP%\dsh-boot-trace.log`），专门用来区分"进程没起来 / 卡在 setup / 单实例退出"这三种情况。
+
 ## 环境坑（这一轮踩到的）
+
+> ⚠️ 更正：下面这条"工作区路径"的对照结论**后来被推翻了** —— 真正的解释是上面那节
+> 「僵尸实例占着单实例锁」：当时那个僵尸恰好是留在工作区外目录里的一个进程，
+> 我误把"它在挡路"读成了"路径有问题"。保留原始记录作反面教材：
+> **凡是"同一份二进制换个位置就成败不同"的结论，先查有没有僵尸进程在挡路。**
 
 - 🔴 **绝对不要从 DSH 工作区目录里启动这个 exe**（工作区根目录、`dist\` 都一样）。
   2026-09-25 实测对照（**同一份二进制、SHA256 完全相同**）：
