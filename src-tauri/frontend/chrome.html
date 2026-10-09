@@ -457,7 +457,7 @@
   <div class="left">
     <img class="icon" id="icon" alt="" draggable="false" />
     <span class="title">DSH Desktop</span>
-    <span class="badge">v2.9.1</span>
+    <span class="badge">v2.10.0</span>
     <span class="status" id="status-pill" role="status"><span class="dot warn" id="dot"></span><span id="status-label">连接中…</span></span>
   </div>
   <div class="right">
@@ -483,7 +483,7 @@
 
 <div class="popup" id="popup-menu">
   <div class="mh">
-    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.9.1</span></div>
+    <div class="mh-title">DSH Desktop <span class="dim">封装 v2.10.0</span></div>
     <div class="mh-sub">后端状态：<span id="menu-status">连接中…</span></div>
   </div>
   <button class="item" data-act="restart"><span>重启 Web 服务</span><span class="kbd">重启后端</span></button>
@@ -1394,6 +1394,10 @@
       var meta = (v.installed ? ('dsh ' + v.installed) : (v.spec || 'manual')) + ' · ' + (v.dir || '');
       var btns = '';
       if (!v.active && v.exists && v.source !== 'manual') btns += '<button data-v="use" data-id="' + esc(v.id) + '">使用</button>';
+      // 全局 dsh 支持就地更新（npm install -g），但不允许改名/删除（那是系统安装的）
+      if (v.source === 'global') {
+        if (v.exists && !v.active) btns += '<button data-v="update" data-id="' + esc(v.id) + '">更新</button>';
+      }
       // 当前使用中的版本不允许再操作（避免误点删掉正在跑的版本）
       if (v.source === 'managed' && !v.active) {
         if (!v.exists) {
@@ -1481,14 +1485,20 @@
   function showVerForm(mode, v) {
     envEdit = { type: 'version', mode: mode, id: v ? v.id : null };
     var form = document.getElementById('env-ver-form');
+    var isGlobal = !!(v && v.source === 'global');
     var labelVal = v ? v.label : '';
-    var specVal = (v && v.spec && v.spec !== 'manual') ? v.spec : '';
+    // 全局条目更新时标签留空：否则会把旧标签（含旧版本号）原样回传，
+    // 后端就不再自动同步版本号，面板会一直显示旧版本。
+    if (isGlobal && mode === 'update') labelVal = '';
+    // 全局安装没有「可编辑的 spec」（spec 恒为 global），留空即表示装 latest
+    var specVal = (v && v.spec && v.spec !== 'manual' && v.spec !== 'global') ? v.spec : '';
     var html = '';
     if (mode === 'rename') {
       html = '<div class="f-row"><label>备注</label><input type="text" id="env-ver-label" value="' + esc(labelVal) + '" placeholder="版本备注名" /></div>';
     } else {
-      html = '<div class="f-row"><label>版本</label><input type="text" id="env-ver-spec" value="' + esc(specVal) + '" placeholder="latest 或 0.1.2-alpha.2" /></div>' +
-        '<div class="f-row"><label>备注</label><input type="text" id="env-ver-label" value="' + esc(labelVal) + '" placeholder="可选备注名" /></div>';
+      var specPlaceholder = isGlobal ? '留空 = latest（可填 0.2.1-alpha.1 等）' : 'latest 或 0.1.2-alpha.2';
+      html = '<div class="f-row"><label>版本</label><input type="text" id="env-ver-spec" value="' + esc(specVal) + '" placeholder="' + specPlaceholder + '" /></div>' +
+        '<div class="f-row"><label>备注</label><input type="text" id="env-ver-label" value="' + esc(labelVal) + '" placeholder="' + (isGlobal ? '留空 = 自动同步版本号' : '可选备注名') + '" /></div>';
     }
     html += '<div class="f-actions"><button id="env-ver-cancel">取消</button><button id="env-ver-ok" class="primary">' +
       (mode === 'update' ? '开始更新' : (mode === 'rename' ? '保存' : '开始安装')) + '</button></div>';

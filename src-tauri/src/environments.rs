@@ -188,10 +188,7 @@ pub fn ensure_seed_versions(settings: &mut Settings) {
             }
             return;
         }
-        let prefix = Path::new(&bin)
-            .parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.parent())
+        let prefix = prefix_of_bin(&bin)
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
         let installed = version_of_bin(&bin);
@@ -252,12 +249,7 @@ pub fn ensure_seed_versions(settings: &mut Settings) {
         if known {
             return;
         }
-        let prefix = PathBuf::from(&bin)
-            .parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.parent())
-            .map(|p| p.to_path_buf())
-            .unwrap_or_default();
+        let prefix = prefix_of_bin(&bin).unwrap_or_default();
         let installed = version_of_bin(&bin);
         let id = gen_id();
         let label = installed
@@ -549,6 +541,15 @@ pub fn remove_version(settings: &Mutex<Settings>, log: &Arc<Logger>, id: &str) -
     Ok(())
 }
 
+/// 更新一个版本。
+///
+/// 受管版本：在各自的独立目录里 `npm install --prefix`，更新不影响其它版本。
+/// 全局版本：走 `npm install -g`，就地升级 PATH 上那份全局 dsh。
+/// 手动路径版本：不做改动（桌面端无从得知其安装方式）。
+///
+/// 全局条目的 `dir` 有两种形态：`ensure_seed_versions` 登记的是 npm 前缀
+/// （如 `%APPDATA%\npm`），而 `list_versions` 兜底造的伪条目 `dir` 为空、
+/// 只有 bin 路径。因此这里一律由 `bin.js` 反推前缀，拿不到才退回 `dir`。
 pub fn update_version(
     settings: &Arc<Mutex<Settings>>,
     log: &Arc<Logger>,
@@ -564,9 +565,68 @@ pub fn update_version(
         .position(|v| v.id == id)
         .ok_or_else(|| "版本不存在".to_string())?;
     let entry = s.dsh_versions[pos].clone();
-    if entry.source == "global" || entry.source == "manual" {
-        return Err("系统/手动路径版本不能由桌面端更新，请使用 npm 或直接切换".to_string());
+    let mut explicit_label = label
+        .map(|x| x.trim().to_string())
+        .filter(|x| !x.is_empty());
+    let node_bin = resolve_node(&s);
+
+    if entry.source == "global" {
+        let prefix = global_prefix_of(&entry)
+            .ok_or_else(|| "无法定位全局 dsh 的安装前缀（bin.js 路径异常）".to_string())?;
+        // 全局安装的版本号无法从历史上得知，未指定就取 latest
+        let new_spec = spec
+            .map(|x| x.trim().to_string())
+            .filter(|x| !x.is_empty())
+            .unwrap_or_else(|| "latest".to_string());
+        let is_current = s.active_version_id.as_deref() == Some(entry.id.as_str())
+            || s.dsh_bin.as_deref() == entry.bin.as_deref();
+        // ⚠️ 必须在这里放掉外层读锁：
+        // 1) std::sync::Mutex 不可重入 —— 下面还要 settings.lock() 写回，持锁再锁会**死锁**
+        //    （症状：npm 安装成功并打日志，但之后既不写 settings 也不报错，env_task 永不结束）；
+        // 2) npm 安装要几十秒，持锁期间 /env 与面板全部卡死。
+        drop(s);
+        let guard = GlobalUpdateGuard(global_lock().lock().unwrap());
+        log.info(&format!(
+            "[env] 准备更新全局 dsh: {} -> {} (prefix {})",
+            entry.installed.as_deref().unwrap_or("unknown"),
+            new_spec,
+            prefix.display()
+        ));
+        report("installing", &format!("正在更新全局 dsh {}…", new_spec), 0);
+        let res = install_dsh_global(&node_bin, &new_spec, &prefix, log, report);
+        drop(guard);
+        let actual = res?;
+        // 重新读回实际版本与入口路径（安装可能改变 bin.js 位置）
+        let installed = read_actual_version(&prefix).or(Some(actual));
+        let bin = dsh_bin_for(&prefix);
+        let bin_str = bin.to_string_lossy().to_string();
+        if !bin.exists() {
+            return Err(format!("更新完成但未找到 dsh 入口: {}", bin.display()));
+        }
+        let label_from_spec = explicit_label.take();
+        let mut s = settings.lock().unwrap();
+        let out = {
+            let entry = s.dsh_versions.get_mut(pos).ok_or_else(|| "版本不存在".to_string())?;
+            entry.spec = "global".to_string();
+            entry.installed = installed.clone();
+            entry.dir = prefix.to_string_lossy().to_string();
+            entry.bin = Some(bin_str.clone());
+            // 标签里的旧版本号一并刷新，否则面板会一直显示旧版本
+            entry.label = label_from_spec
+                .unwrap_or_else(|| format!("全局 dsh{}", installed.as_deref().map(|v| format!(" ({v})")).unwrap_or_default()));
+            entry.clone()
+        };
+        if is_current {
+            s.dsh_bin = Some(bin_str);
+        }
+        save_settings(&s);
+        return Ok(out);
     }
+
+    if entry.source == "manual" {
+        return Err("手动路径版本不能由桌面端更新，请使用原安装方式或直接切换".to_string());
+    }
+
     let new_spec = spec
         .map(|x| x.trim().to_string())
         .filter(|x| !x.is_empty())
@@ -575,7 +635,6 @@ pub fn update_version(
         .map(|x| x.trim().to_string())
         .filter(|x| !x.is_empty())
         .unwrap_or_else(|| entry.label.clone());
-    let node_bin = resolve_node(&s);
     drop(s);
     let prefix = PathBuf::from(&entry.dir);
     std::fs::create_dir_all(&prefix).map_err(|e| format!("创建版本目录失败: {}", e))?;
@@ -905,6 +964,156 @@ fn resolve_node(s: &Settings) -> String {
     "node.exe".to_string()
 }
 
+/// 由 `bin.js` 反推它的 npm 前缀 / 受管版本目录。
+///
+/// bin.js 是 `<prefix>\node_modules\@deepseek-ai\dsh\lib\bin.js`。
+/// `Path::parent()` 作用在**文件**路径上第一次返回的就是它所在的目录（`lib`），
+/// 所以从这里再退 4 级即可：lib→dsh→@deepseek-ai→node_modules→**prefix**，共 4 次。
+/// ⚠️ 判定标准只有一个：**结果目录下要能同时看到 `node_modules\@deepseek-ai\dsh`**。
+/// （用 PowerShell 数 `Split-Path` 次数会多算一级——它是对文件还是对目录取父，起点不同。）
+fn prefix_of_bin(bin: &str) -> Option<PathBuf> {
+    let mut cur = Path::new(bin).parent();
+    for _ in 0..4 {
+        cur = cur.and_then(|p| p.parent());
+    }
+    cur.map(|p| p.to_path_buf())
+}
+
+/// 全局 dsh 的 npm 前缀。
+///
+/// 优先由 bin.js 反推；拿不到（或反推结果不含 dsh 包）再退回 `dir` 字段，
+/// 这样即便 settings 里存的是历史遗留的坏 `dir` 也能正常工作。
+/// 少退一级会得到 `...\node_modules\@deepseek-ai`，那不是合法的 npm 前缀。
+fn global_prefix_of(entry: &DshVersionEntry) -> Option<PathBuf> {
+    let has_pkg = |p: &Path| p.join("node_modules").join("@deepseek-ai").join("dsh").exists();
+    if let Some(bin) = entry.bin.as_deref().filter(|b| !b.is_empty()) {
+        if let Some(p) = prefix_of_bin(bin) {
+            if has_pkg(&p) {
+                return Some(p);
+            }
+        }
+    }
+    // 兜底 1：dir 直接就是合法前缀
+    let d = PathBuf::from(&entry.dir);
+    if !entry.dir.is_empty() && has_pkg(&d) {
+        return Some(d);
+    }
+    // 兜底 2：历史脏数据。settings.json 里曾把 dir 存成前缀下更深的层
+    // （`...\node_modules`、`...\node_modules\@deepseek-ai`、`...\@deepseek-ai\dsh` 都出现过），
+    // 一律从 dir 逐级上溯，找到第一个真正含 `node_modules\@deepseek-ai\dsh` 的祖先。
+    let mut cur = d.parent();
+    while let Some(p) = cur {
+        if has_pkg(p) {
+            return Some(p.to_path_buf());
+        }
+        cur = p.parent();
+    }
+    None
+}
+
+/// 全局安装会改动共享的 npm 前缀，串行化避免并发写坏。
+fn global_lock() -> &'static Mutex<()> {
+    static LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// 即便安装中途返回错误也要解锁的 RAII 卫兵。
+struct GlobalUpdateGuard(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+/// 更新全局 dsh：`npm install -g @deepseek-ai/dsh@<spec> --prefix <prefix>`。
+///
+/// 显式传 `--prefix` 而不依赖 npm 的全局前缀推断：条目里的 bin 路径已经确定
+/// 了那份全局安装在哪个前缀下，显式指定可保证「升级的就是面板上这一个」。
+/// npm 会自行定位已存在的全局树并覆盖它，无需先删除旧版本。
+fn install_dsh_global(
+    node_bin: &str,
+    spec: &str,
+    prefix: &Path,
+    log: &Arc<Logger>,
+    report: &dyn Fn(&str, &str, u32),
+) -> Result<String, String> {
+    let npm_cli = npm_cli_for(node_bin)?;
+    let (name, registry) = pick_registry()?;
+    log.info(&format!(
+        "[env] npm install -g {} @deepseek-ai/dsh@{} (prefix {}, reg {})",
+        node_bin,
+        spec,
+        prefix.display(),
+        registry
+    ));
+    let mut child = Command::new(node_bin)
+        .arg(npm_cli.to_str().unwrap_or(""))
+        .args([
+            "install",
+            "-g",
+            "--prefix",
+            prefix.to_str().unwrap_or(""),
+            &format!("@deepseek-ai/dsh@{}", spec),
+            "--registry",
+            registry,
+            "--loglevel",
+            "info",
+            "--no-fund",
+            "--no-audit",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .spawn()
+        .map_err(|e| format!("npm 更新全局 dsh 失败: {}", e))?;
+
+    let mut tail: Vec<String> = Vec::new();
+    let mut fetched = 0u32;
+    if let Some(err) = child.stderr.take() {
+        let mut reader = BufReader::new(err);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    let t = line.trim_end().to_string();
+                    if t.is_empty() {
+                        continue;
+                    }
+                    if t.contains("http fetch") {
+                        fetched += 1;
+                        report(
+                            "installing",
+                            &format!("正在从 {} 下载全局 dsh…", name),
+                            fetched,
+                        );
+                    }
+                    tail.push(t);
+                    if tail.len() > 40 {
+                        tail.remove(0);
+                    }
+                }
+            }
+        }
+    }
+    let st = child
+        .wait()
+        .map_err(|e| format!("npm 更新全局 dsh 失败: {}", e))?;
+    if !st.success() {
+        let detail: String = tail.iter().rev().take(4).cloned().collect::<Vec<_>>().join(" ");
+        let detail = if detail.is_empty() {
+            String::new()
+        } else {
+            format!(": {}", detail)
+        };
+        return Err(format!(
+            "npm 更新全局 dsh 失败 (exit={:?}){}",
+            st.code(),
+            detail
+        ));
+    }
+    let actual = read_actual_version(prefix).unwrap_or_else(|| spec.to_string());
+    log.info(&format!("[env] 全局 dsh 更新完成：{}", actual));
+    Ok(actual)
+}
+
 fn npm_cli_for(node_bin: &str) -> Result<PathBuf, String> {
     PathBuf::from(node_bin)
         .parent()
@@ -1017,4 +1226,98 @@ fn install_dsh_to_prefix(
     let actual = read_actual_version(prefix).unwrap_or_else(|| spec.to_string());
     log.info(&format!("[env] dsh {} 安装完成：{}", actual, bin.display()));
     Ok(actual)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry_with(bin: Option<&str>, dir: &str) -> DshVersionEntry {
+        DshVersionEntry {
+            id: "t".to_string(),
+            label: "t".to_string(),
+            spec: "global".to_string(),
+            installed: None,
+            dir: dir.to_string(),
+            bin: bin.map(|b| b.to_string()),
+            source: "global".to_string(),
+        }
+    }
+
+    /// 全局前缀必须退回真正的前缀目录，而不是 `@deepseek-ai` 那一层。
+    #[test]
+    fn global_prefix_comes_from_bin_path() {
+        // 沙箱下 %TEMP% 对子进程可能不可写，用 crate 所在的 target 目录做隔离夹具
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("env-test-{}-{}", std::process::id(), uniq));
+        let prefix = root.join("npm");
+        let pkg = prefix
+            .join("node_modules")
+            .join("@deepseek-ai")
+            .join("dsh");
+        std::fs::create_dir_all(pkg.join("lib")).unwrap();
+        std::fs::write(pkg.join("lib").join("bin.js"), "// x").unwrap();
+        std::fs::write(
+            pkg.join("package.json"),
+            r#"{"name":"@deepseek-ai/dsh","version":"9.9.9"}"#,
+        )
+        .unwrap();
+
+        let bin = pkg.join("lib").join("bin.js");
+        let bin_s = bin.to_string_lossy().to_string();
+
+        // bin 优先，且必须等于 prefix 而不是 @deepseek-ai 层
+        let got = global_prefix_of(&entry_with(Some(&bin_s), "")).unwrap();
+        assert_eq!(got, prefix, "应由 bin.js 退回 npm 前缀");
+
+        // dir 兜底：bin 不可用时用 dir
+        let got2 = global_prefix_of(&entry_with(None, &prefix.to_string_lossy())).unwrap();
+        assert_eq!(got2, prefix);
+
+        // 读版本
+        assert_eq!(read_actual_version(&prefix).as_deref(), Some("9.9.9"));
+
+        // prefix_of_bin 必须退到 prefix，而不是 node_modules / @deepseek-ai 层
+        assert_eq!(prefix_of_bin(&bin_s).unwrap(), prefix);
+
+        // 不变量：反推出的目录必须真的包含 node_modules\@deepseek-ai\dsh
+        let derived = prefix_of_bin(&bin_s).unwrap();
+        assert!(
+            derived.join("node_modules").join("@deepseek-ai").join("dsh").exists(),
+            "反推目录 {:?} 下必须能看到 node_modules\\@deepseek-ai\\dsh",
+            derived
+        );
+
+        // 历史脏数据 1：dir 存成 `...\node_modules`（本次实测真实存在的那种偏差）
+        let bad1 = prefix.join("node_modules");
+        assert_eq!(
+            global_prefix_of(&entry_with(Some(&bin_s), &bad1.to_string_lossy())).unwrap(),
+            prefix,
+            "bin 可用时应忽略坏 dir"
+        );
+        // 历史脏数据 2：dir 存成 `...\node_modules\@deepseek-ai`
+        let bad2 = prefix.join("node_modules").join("@deepseek-ai");
+        assert_eq!(
+            global_prefix_of(&entry_with(None, &bad2.to_string_lossy())).unwrap(),
+            prefix,
+            "仅凭 bad2 也应纠正"
+        );
+        // 历史脏数据 3：dir 存成 `...\node_modules\@deepseek-ai\dsh`
+        let bad3 = prefix.join("node_modules").join("@deepseek-ai").join("dsh");
+        assert_eq!(
+            global_prefix_of(&entry_with(None, &bad3.to_string_lossy())).unwrap(),
+            prefix,
+            "仅凭 bad3 也应纠正"
+        );
+
+        // 两者都不可用 -> None（例如伪条目 dir 为空、bin 也是空）
+        assert!(global_prefix_of(&entry_with(None, "")).is_none());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
